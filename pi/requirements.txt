@@ -1,0 +1,4 @@
+# Fill in as each sensor's real driver gets wired up.
+smbus2          # I2C: EZO-EC, EZO-pH, light sensor, etc.
+RPi.GPIO        # relay control (fans, dosing pumps)
+supabase        # sync.py transport
