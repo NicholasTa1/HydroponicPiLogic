@@ -4,6 +4,8 @@ EC/pH ride on Atlas Scientific EZO carrier boards over I2C. Water level hardware
 (load cell vs ultrasonic) — read() is a stub until that part is picked.
 """
 
+import random
+
 from sensors.base import Sensor, Reading
 from config import EZO_EC_ADDRESS, EZO_PH_ADDRESS, MASTER_BASIN
 
@@ -35,8 +37,10 @@ class PHSensor(Sensor):
         self.address = address
 
     def read(self) -> Reading:
-        # TODO: I2C read/command cycle against the EZO-pH board, temp-compensated.
-        raise NotImplementedError
+        # DUMMY DATA — no probe wired up yet. Swap this body for the real I2C read/command
+        # cycle against the EZO-pH board (temp-compensated) once hardware is on the bench.
+        value = round(random.uniform(5.5, 6.5), 2)
+        return Reading(basin_id=self.basin_id, sensor=self.name, value=value, unit=self.unit)
 
     def close(self):
         """No-op for now; future scope for the SMBus handle."""
