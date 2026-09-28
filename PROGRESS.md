@@ -52,3 +52,44 @@ Entry format:
   sync -> clear) without waiting on the 30s/5min loop in `main.py`.
 - Added `.gitignore` (repo root) and `pi/.env.example` so Supabase credentials and the local
   `hydro.db` file never get committed.
+
+## 2026-09-28
+- Hardware for pH turned out to be different from what `PI_CONTROL_SPEC.md` assumed: it is a
+  **DFRobot analog pH board (SEN0161/SEN0169)** read through an **Adafruit ADS1115 I2C ADC**,
+  not an Atlas Scientific EZO board on I2C. The Pi has no analog inputs, hence the ADC.
+- `PHSensor` now does a real read instead of returning dummy data: median of 5 ADS1115 samples
+  on channel A0, converted `pH = PH_SLOPE * volts + PH_INTERCEPT`. Working in volts (not raw
+  ADC counts) keeps the conversion independent of ADC resolution, which is what DFRobot's FAQ
+  warns about for non-Arduino controllers.
+- Added `pi/sensors/ads1115.py`, a minimal register-level ADS1115 driver over `smbus2`.
+  Deliberately NOT using the Adafruit CircuitPython library: the official guide shows two
+  different library APIs on adjacent pages (a restructure), and Blinka adds platform-detection
+  problems on Pi 5. The register map is fixed in silicon, so this can't drift. Verified the
+  config word computes to 0xC383 (known-good for A0 at gain 1) and the two's-complement ->
+  volts math is right.
+- The ADC is constructed lazily on first read so `build_sensors()` stays side-effect free and
+  still works off the Pi (where `smbus2` does not exist); a missing bus is then caught by the
+  existing per-sensor handler in `read_all` rather than crashing startup.
+- Added `pi/calibrate_ph.py` for the two-point buffer calibration (pH 4.00 + 9.18/10.00). Until
+  it is run, `PH_SLOPE`/`PH_INTERCEPT` are DFRobot's uncalibrated defaults (3.5 / 0.0) and
+  readings will look plausible but be WRONG — do not treat them as a hardware verdict.
+  Note: DFRobot's own sample sketch computes the intercept against the previous slope, which is
+  a bug; `calibrate_ph.py` uses the newly derived slope.
+- Removed `EZO_PH_ADDRESS` (superseded). `EZO_EC_ADDRESS` left in place but flagged — EC
+  hardware is not confirmed and may also end up analog on a spare ADC channel.
+
+Open hardware concerns found in the vendor docs, not yet resolved:
+- **Voltage**: ADS1115 absolute max analog input is VDD + 0.3V. The pH board is a 5V module and
+  can swing to 5V; with the ADC on the Pi's 3.3V that is over the limit. Normal pH 4-10 output
+  is ~1.1-2.9V so routine operation is fine, but a faulty/disconnected probe is not. A 10K
+  series resistor into A0 is cheap insurance. Do NOT power the ADS1115 at 5V to work around
+  this — its SDA/SCL pullups go to VIN and would back-feed the Pi's non-5V-tolerant GPIO.
+- **EC/pH interference**: DFRobot FAQ Q2 says an EC meter (or any powered device, incl. a pump)
+  in the same container corrupts pH readings, and these analog boards have no isolation. This
+  conflicts with spec §5, which has EC and pH both in the master basin with circulation running.
+  Needs a real fix (sequencing reads, isolation, or separate containers).
+- **Probe choice**: SEN0161 cannot be continuously immersed (~6 months, bulb only). SEN0169 is
+  fully waterproof, ~2 years. Spec has probes submerged for a full crop cycle, so SEN0169 is the
+  correct part — confirm which one we actually have.
+- Spec §6 wants raw millivolts logged alongside pH for drift analysis. Not done: needs a schema
+  change locally and remotely. Worth doing before the real crop cycle starts.

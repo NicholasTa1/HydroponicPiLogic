@@ -19,9 +19,21 @@ BASIN_IDS = ["basin_1"]     # add one entry per physical basin as they come onli
 FAN_ON_TEMP_F = 72.0
 FAN_OFF_TEMP_F = 58.0
 
-# --- I2C addresses (Atlas Scientific EZO defaults, override per wiring) ---
-EZO_PH_ADDRESS = 0x63
-EZO_EC_ADDRESS = 0x64
+# --- ADC (Adafruit ADS1115) ---
+# The Pi has no analog inputs, so analog probes are read through this I2C ADC.
+ADS1115_ADDRESS = 0x48      # ADDR pin to GND / unconnected; 0x49-0x4B if rewired
+ADS1115_PGA = 1             # +/-4.096V full scale, covers the pH board's output swing
+PH_ADC_CHANNEL = 0          # A0
+
+# --- pH probe (DFRobot SEN0161/SEN0169 analog board) ---
+# pH is linear in the board's output voltage: pH = PH_SLOPE * volts + PH_INTERCEPT.
+# 3.5 / 0.0 are DFRobot's defaults for an UNCALIBRATED board — readings will be plausible
+# but wrong until these are replaced with what calibrate_ph.py prints.
+PH_SLOPE = 3.5
+PH_INTERCEPT = 0.0
+PH_SAMPLES_PER_READ = 5     # median of N ADC reads; raw analog pH output is noisy
+
+EZO_EC_ADDRESS = 0x64       # EC hardware not confirmed yet; may end up analog on the ADC too
 
 # --- SQLite ---
 DB_PATH = "hydro.db"
