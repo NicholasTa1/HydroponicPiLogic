@@ -93,3 +93,21 @@ Open hardware concerns found in the vendor docs, not yet resolved:
   correct part — confirm which one we actually have.
 - Spec §6 wants raw millivolts logged alongside pH for drift analysis. Not done: needs a schema
   change locally and remotely. Worth doing before the real crop cycle starts.
+
+## 2026-10-01
+- Pi environment is now working. Two snags worth recording, both environment rather than code:
+  - The venv had never actually been created on the Pi. Note that `.env` (Supabase credentials)
+    and `.venv` (Python environment) are easy to confuse — both are gitignored, so neither
+    arrives with a `git clone` and both must be recreated per machine.
+  - `i2cdetect -y 1` failed with "could not open file `/dev/i2c-1`". Cause was simply that the
+    I2C interface had never been enabled; `sudo raspi-config nonint do_i2c 0` plus a reboot
+    fixed it (the `0` means enable — raspi-config's nonint flags read backwards).
+- `i2cdetect -y 1` now returns a normal empty grid, which is correct with nothing wired up. The
+  I2C bus is confirmed working end to end on the Pi.
+
+**Stopped here (2026-10-01):** waiting on physical wiring — nothing is plugged into the Pi yet.
+The ADS1115 driver, `PHSensor`'s real read, and `calibrate_ph.py` remain verified only in terms
+of their math, never against a physical probe. Next session, in order: wire the ADS1115 (VIN to
+**3.3V**, not 5V — see the voltage note above), confirm `i2cdetect -y 1` shows `48`, run
+`calibrate_ph.py` against pH 4.00 and 9.18 buffers, paste the slope/intercept into `config.py`,
+then `test_ph_sync.py` for a real end-to-end reading.
