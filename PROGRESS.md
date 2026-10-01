@@ -105,9 +105,41 @@ Open hardware concerns found in the vendor docs, not yet resolved:
 - `i2cdetect -y 1` now returns a normal empty grid, which is correct with nothing wired up. The
   I2C bus is confirmed working end to end on the Pi.
 
+- EC sensor implemented: **SenseCAP S-EC-01 in analog mode**, 0-2V output on ADS1115 channel A1,
+  sharing the same ADC as pH. Reported in mS/cm to match spec §5 setpoints and the remote `ec`
+  column, though the datasheet works in uS/cm.
+- Both analog sensors now share one `ADS1115` handle via `get_shared_adc()` instead of each
+  opening its own SMBus connection to the same chip. Removed the per-sensor `close()` methods,
+  which would have been wrong against a shared handle (nothing called them).
+- `sync.py` now maps EC as well as pH, via a `_REMOTE_COLUMNS` dict. Unmapped sensors still
+  raise rather than silently dropping.
+- Added `pi/read_adc.py`: live voltage readout per channel alongside the converted value, to
+  separate "probe not wired up" from "conversion constants wrong" during bring-up.
+- **Good news on an open concern:** the S-EC-01 datasheet specifies an *isolated sensor input*,
+  which is the exact mitigation for the EC-corrupts-pH problem flagged on 2026-09-28. That
+  specific mechanism should be handled. Not a complete all-clear — the DFRobot warning also
+  covers any powered device in the tank including the circulation pump, and the pH board itself
+  is unisolated — so still verify empirically with the pump running before trusting it.
+- Two EC things that still need confirming against the physical unit:
+  - **Output range variant.** `EC_VOLTS_TO_US_CM` currently assumes the 0-2000 uS/cm unit
+    (multiplier 1000). The datasheet offers 1000/2500/5000/10000 depending on what was ordered,
+    so a wrong value scales every reading by up to 10x. Identify it by reading the voltage in
+    1413 uS/cm solution: 1.413V / 0.565V / 0.283V / 0.141V respectively. Worth noting the
+    0-2000 variant is by far the best fit for lettuce (0.8-1.3 mS/cm sits mid-scale); on the
+    0-20000 variant the whole crop range is squeezed into the bottom ~7% of the output.
+  - **Power draw.** The sensor takes 3.9-30V and is specced at 40mA idle / 80mA max *at 24V*.
+    Run from the Pi's 5V rail that is roughly 200-400mA, which is a real load on top of the pH
+    board and the Pi itself. A separate supply is an option since it accepts up to 30V — but
+    its GND must still tie to Pi GND, as the analog output is referenced to it.
+- EC calibration is on-device (buttons SW2/SW3 against 1413 and 12880 uS/cm solutions), not a
+  slope we fit, so there is deliberately no EC equivalent of `calibrate_ph.py`. Temperature
+  compensation is also internal to the sensor (2%/degC default), which satisfies spec §4
+  without software work.
+
 **Stopped here (2026-10-01):** waiting on physical wiring — nothing is plugged into the Pi yet.
-The ADS1115 driver, `PHSensor`'s real read, and `calibrate_ph.py` remain verified only in terms
-of their math, never against a physical probe. Next session, in order: wire the ADS1115 (VIN to
-**3.3V**, not 5V — see the voltage note above), confirm `i2cdetect -y 1` shows `48`, run
+The ADS1115 driver, both sensor reads, and `calibrate_ph.py` remain verified only in terms of
+their math, never against physical probes. Next session, in order: wire the ADS1115 (VIN to
+**3.3V**, not 5V — see the voltage note above), confirm `i2cdetect -y 1` shows `48`, use
+`read_adc.py` to sanity-check raw voltages and pin down the EC range variant, run
 `calibrate_ph.py` against pH 4.00 and 9.18 buffers, paste the slope/intercept into `config.py`,
 then `test_ph_sync.py` for a real end-to-end reading.

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import time
 
+from config import ADS1115_ADDRESS, ADS1115_PGA
+
 _CONVERSION_REGISTER = 0x00
 _CONFIG_REGISTER = 0x01
 
@@ -50,3 +52,17 @@ class ADS1115:
 
     def close(self):
         self.bus.close()
+
+
+_shared_adc: ADS1115 | None = None
+
+
+def get_shared_adc() -> ADS1115:
+    """There is one physical ADC, so every analog sensor goes through one handle.
+
+    Built on first use rather than at import so modules stay importable off the Pi.
+    """
+    global _shared_adc
+    if _shared_adc is None:
+        _shared_adc = ADS1115(ADS1115_ADDRESS, pga=ADS1115_PGA)
+    return _shared_adc

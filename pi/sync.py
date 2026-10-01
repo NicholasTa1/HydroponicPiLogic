@@ -25,15 +25,20 @@ def get_client() -> Client:
     return _client
 
 
+# Local sensor name -> column on the remote wide table. Sensors absent here have no remote
+# home yet; see supabase_schema.sql for why that table's shape is still an open question.
+_REMOTE_COLUMNS = {"ph": "ph", "ec": "ec"}
+
+
 def _row_to_record(row: sqlite3.Row) -> dict:
     # The remote table is a wide snapshot row (one column per sensor, no basin_id) rather than
-    # our local long format. Only pH is mapped for now — extend this once other sensors/basins
-    # need to land remotely too.
-    if row["sensor"] != "ph":
+    # our local long format, so each reading lands as its own row with the other columns null.
+    column = _REMOTE_COLUMNS.get(row["sensor"])
+    if column is None:
         raise NotImplementedError(f"no remote column mapping yet for sensor={row['sensor']!r}")
 
     recorded_at = datetime.datetime.fromtimestamp(row["ts"], tz=datetime.timezone.utc).isoformat()
-    return {"ph": row["value"], "recorded_at": recorded_at}
+    return {column: row["value"], "recorded_at": recorded_at}
 
 
 def send_batch(readings: list[sqlite3.Row]) -> bool:

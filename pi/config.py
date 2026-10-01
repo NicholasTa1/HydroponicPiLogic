@@ -33,7 +33,23 @@ PH_SLOPE = 3.5
 PH_INTERCEPT = 0.0
 PH_SAMPLES_PER_READ = 5     # median of N ADC reads; raw analog pH output is noisy
 
-EZO_EC_ADDRESS = 0x64       # EC hardware not confirmed yet; may end up analog on the ADC too
+# --- EC probe (SenseCAP S-EC-01, analog 0-2V output) ---
+EC_ADC_CHANNEL = 1          # A1
+
+# The volts -> uS/cm multiplier depends on which output range the unit was ordered with, and
+# getting it wrong scales every reading by up to 10x. Datasheet section 6:
+#     0-2000 uS/cm  -> 1000      0-5000 uS/cm  -> 2500
+#     0-10000 uS/cm -> 5000      0-20000 uS/cm -> 10000
+# Confirm empirically: in 1413 uS/cm calibration solution the output should read
+#     1.413V (1000) | 0.565V (2500) | 0.283V (5000) | 0.141V (10000)
+# Those are far enough apart to be unambiguous — use read_adc.py to check.
+EC_VOLTS_TO_US_CM = 1000
+EC_SAMPLES_PER_READ = 5
+
+# The sensor applies its own temperature compensation internally (2%/degC by default), which
+# is what spec §4 requires — so unlike the EZO plan, nothing needs doing in software here.
+# Calibration is also on-device (buttons SW2/SW3 against 1413 and 12880 uS/cm solutions),
+# not a slope we fit ourselves, so there is no EC equivalent of calibrate_ph.py.
 
 # --- SQLite ---
 DB_PATH = "hydro.db"

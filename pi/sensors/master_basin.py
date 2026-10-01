@@ -1,17 +1,17 @@
 """Sensors that exist once, on the shared reservoir: EC, pH, water level.
 
-EC/pH ride on Atlas Scientific EZO carrier boards over I2C. Water level hardware is still TBD
-(load cell vs ultrasonic) — read() is a stub until that part is picked.
+EC and pH are both analog boards read through the shared ADS1115. Water level hardware is
+still TBD (load cell vs ultrasonic) — read() is a stub until that part is picked.
 """
 
 import statistics
 
-from sensors.ads1115 import ADS1115
+from sensors.ads1115 import get_shared_adc
 from sensors.base import Sensor, Reading
 from config import (
-    ADS1115_ADDRESS,
-    ADS1115_PGA,
-    EZO_EC_ADDRESS,
+    EC_ADC_CHANNEL,
+    EC_SAMPLES_PER_READ,
+    EC_VOLTS_TO_US_CM,
     MASTER_BASIN,
     PH_ADC_CHANNEL,
     PH_INTERCEPT,
@@ -21,21 +21,26 @@ from config import (
 
 
 class ECSensor(Sensor):
+    """SenseCAP S-EC-01 in analog mode, read through an ADS1115 channel.
+
+    Reported in mS/cm to match the spec's setpoint table and the remote `ec` column, while the
+    datasheet's conversion works in uS/cm. Temperature compensation happens inside the sensor,
+    so there is nothing to correct for here.
+    """
+
     name = "ec"
     unit = "mS/cm"
 
-    def __init__(self, address: int = EZO_EC_ADDRESS):
+    def __init__(self, channel: int = EC_ADC_CHANNEL):
         super().__init__(MASTER_BASIN)
-        self.address = address
+        self.channel = channel
 
     def read(self) -> Reading:
-        # TODO: I2C read/command cycle against the EZO-EC board, fed by current water temp
-        # for temperature compensation (see water_temp.py).
-        raise NotImplementedError
-
-    def close(self):
-        """No-op for now; future scope for the SMBus handle."""
-        pass
+        adc = get_shared_adc()
+        samples = [adc.read_voltage(self.channel) for _ in range(EC_SAMPLES_PER_READ)]
+        volts = statistics.median(samples)
+        value = EC_VOLTS_TO_US_CM * volts / 1000.0
+        return Reading(basin_id=self.basin_id, sensor=self.name, value=value, unit=self.unit)
 
 
 class PHSensor(Sensor):
@@ -52,26 +57,13 @@ class PHSensor(Sensor):
     def __init__(self, channel: int = PH_ADC_CHANNEL):
         super().__init__(MASTER_BASIN)
         self.channel = channel
-        self._adc = None
-
-    def _get_adc(self) -> ADS1115:
-        # Built on first read so constructing the sensor stays side-effect free (and possible
-        # off the Pi, where smbus2 does not exist).
-        if self._adc is None:
-            self._adc = ADS1115(ADS1115_ADDRESS, pga=ADS1115_PGA)
-        return self._adc
 
     def read(self) -> Reading:
-        adc = self._get_adc()
+        adc = get_shared_adc()
         samples = [adc.read_voltage(self.channel) for _ in range(PH_SAMPLES_PER_READ)]
         volts = statistics.median(samples)
         value = PH_SLOPE * volts + PH_INTERCEPT
         return Reading(basin_id=self.basin_id, sensor=self.name, value=value, unit=self.unit)
-
-    def close(self):
-        if self._adc is not None:
-            self._adc.close()
-            self._adc = None
 
 
 class WaterLevelSensor(Sensor):
