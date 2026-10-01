@@ -14,6 +14,53 @@ Entry format:
 
 ---
 
+## Reference: hardware wiring
+
+Everything analog goes through one Adafruit ADS1115 ADC on I2C, because the Pi has no analog
+inputs of its own.
+
+**ADS1115 -> Pi**
+
+| ADS1115 | Pi pin | Note |
+|---|---|---|
+| VIN | 3.3V (pin 1) | **Not 5V** — see warning below |
+| GND | GND (pin 6) | |
+| SCL | GPIO3 / SCL (pin 5) | |
+| SDA | GPIO2 / SDA (pin 3) | |
+
+**DFRobot pH board -> ADS1115**: `V+` to Pi 5V (pin 2), `GND` to Pi GND, analog out to **A0**,
+ideally through a 10K series resistor. The board wants a full 5.00V for accuracy.
+
+**SenseCAP S-EC-01 (analog mode) -> ADS1115**: Red `V+` to Pi 5V, Black `GND` to Pi GND,
+Blue `O1` to **A1**. No series resistor needed — its output maxes at 2V.
+
+**Why VIN must be 3.3V, not 5V:** the ADS1115 breakout's SDA/SCL pullups go to VIN. At 5V they
+back-feed the Pi's GPIO, which is not 5V tolerant. The tradeoff is that the ADC's absolute max
+analog input becomes 3.6V (VDD + 0.3V), which the 5V-powered pH board can exceed under a fault
+— hence the series resistor. The EC sensor is unaffected either way at 0-2V.
+
+Expected I2C address: **0x48** (`i2cdetect -y 1`).
+
+## Reference: running on the Pi
+
+```bash
+cd ~/HydroponicPiLogic/pi
+source .venv/bin/activate          # create once: python3 -m venv .venv
+pip install supabase python-dotenv smbus2
+
+i2cdetect -y 1                     # expect 48 once the ADC is wired
+python3 read_adc.py                # live per-channel voltages, Ctrl-C to stop
+python3 calibrate_ph.py            # needs pH 4.00 + 9.18 buffer solutions
+python3 test_ph_sync.py            # one reading end to end into Supabase
+python3 main.py                    # the real 30s sample / 5min sync loop
+```
+
+Run these from inside `pi/` — `DB_PATH` is relative, so `hydro.db` lands in the working
+directory. Neither `.env` (credentials) nor `.venv` (packages) comes down with a `git clone`;
+both are gitignored and must be recreated per machine.
+
+---
+
 ## 2026-09-20
 - Added `PI_CONTROL_SPEC.md`: handoff spec for the Pi-side control subsystem (sensing, dosing,
   safety, local storage, Supabase sync, BLE). Full rationale lives in that file.
