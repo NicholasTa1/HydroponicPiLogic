@@ -52,7 +52,8 @@ source .venv/bin/activate          # create once: python3 -m venv .venv
 pip install supabase python-dotenv smbus2
 
 i2cdetect -y 1                     # expect 48 once the ADC is wired
-python3 read_adc.py                # live per-channel voltages, Ctrl-C to stop
+python3 read_adc.py                # live ADC voltages (pH/EC), Ctrl-C to stop
+python3 read_sensors.py            # every implemented sensor, converted values
 python3 calibrate_ph.py            # needs pH 4.00 + 9.18 buffer solutions
 python3 test_ph_sync.py            # one reading end to end into Supabase
 python3 main.py                    # the real 30s sample / 5min sync loop
