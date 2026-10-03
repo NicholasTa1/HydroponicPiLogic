@@ -26,14 +26,15 @@ def get_client() -> Client:
 
 
 # Local sensor name -> column on the remote wide table. Sensors absent here have nowhere to
-# land remotely: `co2` has no column yet (see supabase_schema.sql), and water_temp/light are
-# not implemented. Readings for those are dropped by send_batch rather than sent.
+# land remotely (water_temp has no column, and neither it nor light is implemented yet).
+# Readings for those are dropped by send_batch rather than sent.
 _REMOTE_COLUMNS = {
     "ph": "ph",
     "ec": "ec",
     "temperature": "temperature_c",
     "humidity": "humidity",
     "light": "light_intensity",
+    "co2": "co2",
 }
 
 

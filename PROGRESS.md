@@ -214,10 +214,19 @@ Open hardware concerns found in the vendor docs, not yet resolved:
   being generated it would have taken down the sync loop *and every other reading in the batch*
   on the first cycle. Unmapped sensors are now skipped with a warning.
 - Mapped `temperature`->`temperature_c`, `humidity`->`humidity`, `light`->`light_intensity`.
-- **CO2 has nowhere to go remotely.** The `sensor_readings` table has no `co2` column, so CO2 is
-  logged locally and dropped at sync time. One-line fix in `supabase_schema.sql`:
-  `alter table sensor_readings add column if not exists co2 double precision;` then add
-  `"co2": "co2"` to `_REMOTE_COLUMNS`. Until then that data does not survive the 5-min buffer.
+- **CO2 now syncs.** A `co2` column was added to `sensor_readings` and mapped in
+  `_REMOTE_COLUMNS`; verified with a real insert landing as row id 12.
+- **The wide-table mismatch is now visibly a problem.** Three readings taken in the same cycle
+  land as three separate rows, each with one populated column and the rest null (rows 12/13/14),
+  versus the original seed rows which carry every value together. Invisible when only pH
+  existed; with five sensors any consumer has to stitch rows back together by timestamp. Two
+  ways out, and it needs a decision with whoever owns the app side:
+    1. Group a cycle's readings into one row before sending (keeps the current table shape).
+    2. Move the remote table to the same long format as local SQLite
+       (`ts, basin_id, sensor, value, unit`), which also solves the missing `basin_id` and
+       would stop needing a new column per sensor.
+  Option 2 matches where the multi-basin design is heading; option 1 is less disruptive to
+  anything already reading the table.
 - **Multi-basin blocker:** the SCD41's I2C address 0x62 is fixed in silicon and cannot be
   changed, so two of them cannot share a bus. Per-basin air temp/humidity/CO2 will need an I2C
   multiplexer (e.g. TCA9548A). Not urgent at `BASIN_IDS = ["basin_1"]`, but it constrains the
