@@ -9,6 +9,13 @@
 --   ph              double precision
 --   recorded_at     timestamptz
 --
+-- MISSING: there is no `co2` column, so CO2 readings are logged locally but dropped by
+-- sync.py instead of reaching Supabase. Run this to fix that:
+--
+--     alter table sensor_readings add column if not exists co2 double precision;
+--
+-- then add "co2": "co2" to _REMOTE_COLUMNS in sync.py.
+--
 -- It has no basin_id column, so it only fits a single basin's worth of readings. sync.py
 -- currently only maps the `ph` column (see _row_to_record). Once more basins/sensors need to
 -- land remotely, this table will need a basin_id column added (or a rethink to a long/narrow

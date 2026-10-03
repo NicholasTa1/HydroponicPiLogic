@@ -25,28 +25,51 @@ def get_client() -> Client:
     return _client
 
 
-# Local sensor name -> column on the remote wide table. Sensors absent here have no remote
-# home yet; see supabase_schema.sql for why that table's shape is still an open question.
-_REMOTE_COLUMNS = {"ph": "ph", "ec": "ec"}
+# Local sensor name -> column on the remote wide table. Sensors absent here have nowhere to
+# land remotely: `co2` has no column yet (see supabase_schema.sql), and water_temp/light are
+# not implemented. Readings for those are dropped by send_batch rather than sent.
+_REMOTE_COLUMNS = {
+    "ph": "ph",
+    "ec": "ec",
+    "temperature": "temperature_c",
+    "humidity": "humidity",
+    "light": "light_intensity",
+}
 
 
-def _row_to_record(row: sqlite3.Row) -> dict:
+def _row_to_record(row: sqlite3.Row) -> dict | None:
     # The remote table is a wide snapshot row (one column per sensor, no basin_id) rather than
     # our local long format, so each reading lands as its own row with the other columns null.
     column = _REMOTE_COLUMNS.get(row["sensor"])
     if column is None:
-        raise NotImplementedError(f"no remote column mapping yet for sensor={row['sensor']!r}")
+        return None
 
     recorded_at = datetime.datetime.fromtimestamp(row["ts"], tz=datetime.timezone.utc).isoformat()
     return {column: row["value"], "recorded_at": recorded_at}
 
 
 def send_batch(readings: list[sqlite3.Row]) -> bool:
-    """Return True once Supabase has acknowledged the insert."""
+    """Return True once Supabase has acknowledged the insert.
+
+    Readings with no remote column are skipped rather than raised on: one unmappable sensor
+    must not take down the sync loop (and with it every other reading in the batch).
+    """
     if not readings:
         return True
 
-    records = [_row_to_record(row) for row in readings]
+    records = []
+    skipped = set()
+    for row in readings:
+        record = _row_to_record(row)
+        if record is None:
+            skipped.add(row["sensor"])
+        else:
+            records.append(record)
+
+    if skipped:
+        print(f"[sync] no remote column, dropping readings for: {', '.join(sorted(skipped))}")
+    if not records:
+        return True
 
     try:
         response = get_client().table(SUPABASE_READINGS_TABLE).insert(records).execute()

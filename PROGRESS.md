@@ -34,12 +34,15 @@ ideally through a 10K series resistor. The board wants a full 5.00V for accuracy
 **SenseCAP S-EC-01 (analog mode) -> ADS1115**: Red `V+` to Pi 5V, Black `GND` to Pi GND,
 Blue `O1` to **A1**. No series resistor needed — its output maxes at 2V.
 
+**Adafruit SCD-41 (PID 5190) -> Pi**: I2C, not through the ADC. STEMMA QT to Pi 3.3V, GND,
+SDA, SCL — it shares the bus with the ADS1115. Appears at **0x62**.
+
 **Why VIN must be 3.3V, not 5V:** the ADS1115 breakout's SDA/SCL pullups go to VIN. At 5V they
 back-feed the Pi's GPIO, which is not 5V tolerant. The tradeoff is that the ADC's absolute max
 analog input becomes 3.6V (VDD + 0.3V), which the 5V-powered pH board can exceed under a fault
 — hence the series resistor. The EC sensor is unaffected either way at 0-2V.
 
-Expected I2C address: **0x48** (`i2cdetect -y 1`).
+Expected I2C addresses (`i2cdetect -y 1`): **0x48** ADS1115, **0x62** SCD-41.
 
 ## Reference: running on the Pi
 
@@ -182,6 +185,43 @@ Open hardware concerns found in the vendor docs, not yet resolved:
   slope we fit, so there is deliberately no EC equivalent of `calibrate_ph.py`. Temperature
   compensation is also internal to the sensor (2%/degC default), which satisfies spec §4
   without software work.
+
+## 2026-10-03
+- **First hardware confirmation:** `i2cdetect -y 1` sees the ADS1115 at 0x48 on the real Pi.
+  pH bring-up in progress; still uncalibrated at that point.
+- Air temperature / humidity / CO2 implemented against the **Sensirion SCD41** (Adafruit PID
+  5190). Worth noting the part is an SCD**41**, not the SCD40 the breakout is often assumed to
+  be — confirmed from the DigiKey listing before writing anything.
+- Added `pi/sensors/scd4x.py`, a register-level driver over `smbus2`, consistent with the
+  ADS1115 decision to avoid CircuitPython/Blinka. Verified against the datasheet's own worked
+  example (v1.7 Table 11): all three CRC test vectors match, and the response
+  `01f4 33 / 6667 a2 / 5eb9 3c` decodes to exactly 500 ppm, 25.00 C, 37.00 %. A corrupted CRC
+  is rejected rather than believed.
+- One chip supplies all three values, so a single read is cached for one 5-second measurement
+  interval and served to all three Sensor classes. That is correctness, not optimisation: the
+  three readings must come from the same sample, and the chip only produces one every 5s.
+- `start()` issues stop_periodic_measurement first and waits the datasheet's 500ms. Without it,
+  a sensor left in periodic mode by a previous run rejects the start command, which looks
+  exactly like a wiring fault on every restart.
+- **Unit change:** air temperature is now Celsius (was declared "F"). The SCD41 reports Celsius
+  and the remote column is literally named `temperature_c`, so Celsius is stored. The fan
+  thresholds stay Fahrenheit as specified (72/58) and `FanController.update` converts. Verified
+  the hysteresis latches on above 72F and holds until below 58F. `water_temp` relabelled to C
+  for consistency; still a stub.
+- **Fixed a latent crash this would have triggered:** `sync._row_to_record` raised on unmapped
+  sensors, and that exception escaped `send_batch` (whose try only wrapped the insert) and was
+  uncaught in `main.sync_and_clear`. Harmless while only pH existed; once CO2 readings started
+  being generated it would have taken down the sync loop *and every other reading in the batch*
+  on the first cycle. Unmapped sensors are now skipped with a warning.
+- Mapped `temperature`->`temperature_c`, `humidity`->`humidity`, `light`->`light_intensity`.
+- **CO2 has nowhere to go remotely.** The `sensor_readings` table has no `co2` column, so CO2 is
+  logged locally and dropped at sync time. One-line fix in `supabase_schema.sql`:
+  `alter table sensor_readings add column if not exists co2 double precision;` then add
+  `"co2": "co2"` to `_REMOTE_COLUMNS`. Until then that data does not survive the 5-min buffer.
+- **Multi-basin blocker:** the SCD41's I2C address 0x62 is fixed in silicon and cannot be
+  changed, so two of them cannot share a bus. Per-basin air temp/humidity/CO2 will need an I2C
+  multiplexer (e.g. TCA9548A). Not urgent at `BASIN_IDS = ["basin_1"]`, but it constrains the
+  multi-basin design in spec §5 and should be priced in before ordering more sensors.
 
 **Stopped here (2026-10-01):** waiting on physical wiring — nothing is plugged into the Pi yet.
 The ADS1115 driver, both sensor reads, and `calibrate_ph.py` remain verified only in terms of
