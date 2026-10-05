@@ -233,6 +233,20 @@ Open hardware concerns found in the vendor docs, not yet resolved:
   multiplexer (e.g. TCA9548A). Not urgent at `BASIN_IDS = ["basin_1"]`, but it constrains the
   multi-basin design in spec §5 and should be priced in before ordering more sensors.
 
+## 2026-10-05
+- **The first SCD41 was dead on arrival.** It never appeared at 0x62 under any condition.
+  Ruled out, in order: I2C not enabled (bus was already proven working), the pH probe being
+  unwired (irrelevant — the ADS1115 enumerates on its own power and SDA/SCL, independent of
+  anything attached to its analog inputs), 3.3V rail droop (moved to 5V, which the breakout
+  supports at VIN with its own regulator and level shifting), and missing common ground with
+  the external 5V supply. None of it was the cause; the part itself is faulty.
+- Nothing in the code needs to change for the replacement. `sensors/scd4x.py` was verified
+  against the datasheet's worked example, not against this unit, so it was never implicated.
+  On arrival: `i2cdetect -y 1` should show `62`, then `read_sensors.py`, then breathe on it and
+  watch CO2 climb past 1500 ppm.
+- Worth doing before wiring a replacement into anything permanent: confirm it enumerates while
+  it is still easy to swap.
+
 **Stopped here (2026-10-01):** waiting on physical wiring — nothing is plugged into the Pi yet.
 The ADS1115 driver, both sensor reads, and `calibrate_ph.py` remain verified only in terms of
 their math, never against physical probes. Next session, in order: wire the ADS1115 (VIN to
