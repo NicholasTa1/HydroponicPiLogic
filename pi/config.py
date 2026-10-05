@@ -53,6 +53,7 @@ EC_SAMPLES_PER_READ = 5
 
 # --- SQLite ---
 DB_PATH = "hydro.db"
+SYNC_BATCH_LIMIT = 300      # rows per request; spec §8 caps a push at a few hundred
 
 # --- Supabase / app transmission ---
 # Never hardcode these. Set them in a local .env (see .env.example) or the Pi's environment.

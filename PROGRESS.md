@@ -247,6 +247,34 @@ Open hardware concerns found in the vendor docs, not yet resolved:
 - Worth doing before wiring a replacement into anything permanent: confirm it enumerates while
   it is still easy to swap.
 
+- **Local retention reversed to the spec's design.** Readings are no longer deleted after sync;
+  rows carry a `synced` flag and are marked rather than removed. This resolves the conflict
+  flagged on 2026-09-20 between the 5-minute-buffer instruction and spec §7/§8, in favour of
+  the spec. Driven by two things: the capstone deliverable is the analysis, and deleted raw
+  data is unrecoverable with only one crop cycle before the deadline; and once Supabase
+  downsamples older data per spec §8, the Pi becomes the only full-resolution copy.
+  Storage is a non-issue — ~800k rows / under 100MB for a whole cycle.
+- `sync_and_clear` -> `sync_pending`, which drains the queue in batches of `SYNC_BATCH_LIMIT`
+  (300) oldest-first, per spec §8.
+- **Subtle trap avoided:** readings with no remote column (currently water_temp, and light once
+  implemented) are marked synced along with the rest of a successful batch. Leaving them
+  unsynced would park them permanently at the front of the oldest-first queue, and once enough
+  accumulated they would fill every batch and starve real readings forever. Verified with a
+  test that puts unmappable rows at the front of the queue with a small batch limit.
+  Consequence: if a column is added later, backfilling history is a deliberate one-off (reset
+  `synced` for that sensor), not something the loop does on its own.
+- Partial index `(ts) WHERE synced = 0` so the sync queue stays a small index regardless of
+  table size. A plain scan stays fast for the first week and then quietly stops being fast.
+- WAL mode enabled, so a second process (BLE) can read while the control loop writes instead of
+  hitting intermittent "database is locked".
+- `connect()` migrates an existing database in place by adding the `synced` column, verified
+  against a database built in the old schema — the Pi's existing `hydro.db` needs no action.
+- `clear_readings()` removed; `get_recent_readings()` added for the BLE read path.
+- One behaviour change worth knowing: deleting-after-sync made duplicate sends structurally
+  impossible. With a flag, a power cut between a successful insert and the flag update would
+  re-send those rows next cycle. Benign (identical values and timestamps) and rare, but it is
+  no longer impossible. A unique constraint on the remote side would close it if it matters.
+
 **Stopped here (2026-10-01):** waiting on physical wiring — nothing is plugged into the Pi yet.
 The ADS1115 driver, both sensor reads, and `calibrate_ph.py` remain verified only in terms of
 their math, never against physical probes. Next session, in order: wire the ADS1115 (VIN to

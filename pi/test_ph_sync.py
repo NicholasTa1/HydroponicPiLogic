@@ -6,6 +6,7 @@ Requires SUPABASE_URL/SUPABASE_KEY set (.env or environment) and supabase_schema
 
 import db
 import sync
+from config import SYNC_BATCH_LIMIT
 from sensors.master_basin import PHSensor
 
 
@@ -17,14 +18,14 @@ def main():
     print(f"read: {reading}")
 
     db.insert_reading(conn, reading)
-    rows = db.get_all_readings(conn)
+    rows = db.get_unsynced_readings(conn, SYNC_BATCH_LIMIT)
     print(f"local rows pending sync: {len(rows)}")
 
     if sync.send_batch(rows):
-        print("sync ok, clearing local buffer")
-        db.clear_readings(conn)
+        db.mark_synced(conn, [row["id"] for row in rows])
+        print("sync ok, rows marked synced (kept locally)")
     else:
-        print("sync failed, leaving local buffer intact")
+        print("sync failed, rows left unsynced for retry")
 
 
 if __name__ == "__main__":

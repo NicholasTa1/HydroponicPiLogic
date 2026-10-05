@@ -9,7 +9,7 @@ import time
 
 import db
 import sync
-from config import BASIN_IDS, SAMPLE_INTERVAL_S, SYNC_INTERVAL_S
+from config import BASIN_IDS, SAMPLE_INTERVAL_S, SYNC_BATCH_LIMIT, SYNC_INTERVAL_S
 from control import FanController
 from sensors.environment import CO2Sensor, HumiditySensor, LightSensor, TemperatureSensor, WaterTempSensor
 from sensors.master_basin import ECSensor, PHSensor, WaterLevelSensor
@@ -55,12 +55,21 @@ def read_all(conn, master_sensors, per_basin_sensors, fan_controllers):
                 fan_controllers[basin_id].update(reading.value)
 
 
-def sync_and_clear(conn):
-    readings = db.get_all_readings(conn)
-    if sync.send_batch(readings):
-        db.clear_readings(conn)
-    else:
-        print("[sync] batch failed, will retry next cycle")
+def sync_pending(conn):
+    """Push unsynced readings in batches until the queue drains (spec §8).
+
+    A whole batch is marked synced on success, including readings with no remote column.
+    Those have nowhere to go, and leaving them unsynced would park them at the front of the
+    oldest-first queue forever, eventually filling every batch and starving real readings.
+    """
+    while True:
+        readings = db.get_unsynced_readings(conn, SYNC_BATCH_LIMIT)
+        if not readings:
+            return
+        if not sync.send_batch(readings):
+            print("[sync] batch failed, will retry next cycle")
+            return
+        db.mark_synced(conn, [row["id"] for row in readings])
 
 
 def main():
@@ -76,7 +85,7 @@ def main():
         read_all(conn, master_sensors, per_basin_sensors, fan_controllers)
 
         if time.monotonic() - last_sync >= SYNC_INTERVAL_S:
-            sync_and_clear(conn)
+            sync_pending(conn)
             last_sync = time.monotonic()
 
         elapsed = time.monotonic() - loop_start

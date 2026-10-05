@@ -1,7 +1,11 @@
-"""SQLite as a short-lived buffer: hold ~5 minutes of readings, hand them to sync, clear on ack.
+"""SQLite as the Pi's durable record of every reading, and as the sync queue.
 
-This intentionally does NOT keep long-term history on the Pi (that lives in Supabase/the app) —
-see PI_CONTROL_SPEC.md for the earlier full-retention design if that tradeoff gets revisited.
+Readings are kept, not deleted: spec §7 wants full 30s resolution for the whole crop cycle
+because the capstone analysis needs raw data, and spec §8 wants local retention and sync status
+treated as separate concerns. Synced rows are therefore marked rather than removed, which also
+lets a second process (BLE) serve history without racing the sync cycle.
+
+A full crop cycle is roughly 800k rows / under 100MB, which is nothing on an SD card.
 """
 
 from __future__ import annotations
@@ -19,16 +23,35 @@ CREATE TABLE IF NOT EXISTS readings (
     basin_id TEXT NOT NULL,
     sensor TEXT NOT NULL,
     value REAL,
-    unit TEXT NOT NULL
+    unit TEXT NOT NULL,
+    synced INTEGER NOT NULL DEFAULT 0
 );
 """
+
+# Partial index: it only holds unsynced rows, so it stays small (a few hundred entries) no
+# matter how large the table grows. Without an index here, finding the sync queue degrades
+# into a full scan — which stays fast for the first week and then quietly does not.
+_INDEX = "CREATE INDEX IF NOT EXISTS readings_unsynced_idx ON readings (ts) WHERE synced = 0;"
 
 
 def connect(db_path: str = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
+    # WAL lets the BLE process read while the control loop writes, instead of intermittent
+    # "database is locked". It is a persistent property of the file, set once.
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(_SCHEMA)
+    _add_synced_column_if_missing(conn)
+    conn.execute(_INDEX)
     conn.commit()
+    conn.row_factory = sqlite3.Row
     return conn
+
+
+def _add_synced_column_if_missing(conn: sqlite3.Connection) -> None:
+    """Migrate databases created before readings carried sync state."""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(readings)")}
+    if "synced" not in columns:
+        conn.execute("ALTER TABLE readings ADD COLUMN synced INTEGER NOT NULL DEFAULT 0")
 
 
 def insert_reading(conn: sqlite3.Connection, reading: Reading, ts: float | None = None) -> None:
@@ -39,12 +62,23 @@ def insert_reading(conn: sqlite3.Connection, reading: Reading, ts: float | None 
     conn.commit()
 
 
-def get_all_readings(conn: sqlite3.Connection) -> list[sqlite3.Row]:
-    conn.row_factory = sqlite3.Row
-    return conn.execute("SELECT * FROM readings ORDER BY ts").fetchall()
+def get_unsynced_readings(conn: sqlite3.Connection, limit: int) -> list[sqlite3.Row]:
+    """Oldest-first so a backlog drains in order."""
+    return conn.execute(
+        "SELECT * FROM readings WHERE synced = 0 ORDER BY ts LIMIT ?", (limit,)
+    ).fetchall()
 
 
-def clear_readings(conn: sqlite3.Connection) -> None:
-    """Only call this after the batch has been acknowledged by sync — see main.py."""
-    conn.execute("DELETE FROM readings")
+def mark_synced(conn: sqlite3.Connection, ids: list[int]) -> None:
+    """Call only once the server has acknowledged the batch."""
+    if not ids:
+        return
+    conn.executemany("UPDATE readings SET synced = 1 WHERE id = ?", [(i,) for i in ids])
     conn.commit()
+
+
+def get_recent_readings(conn: sqlite3.Connection, limit: int) -> list[sqlite3.Row]:
+    """Newest-first history, independent of sync state. For the BLE read path."""
+    return conn.execute(
+        "SELECT * FROM readings ORDER BY ts DESC LIMIT ?", (limit,)
+    ).fetchall()
