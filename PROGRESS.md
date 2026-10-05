@@ -275,6 +275,37 @@ Open hardware concerns found in the vendor docs, not yet resolved:
   re-send those rows next cycle. Benign (identical values and timestamps) and rare, but it is
   no longer impossible. A unique constraint on the remote side would close it if it matters.
 
+- **BLE Part 1 (Pi side) implemented.** Separate process, read-only, history-only.
+- **Corrected a false assumption in the plan doc.** Part 2d assumed "the Pi's SQLite column
+  names (`recorded_at`, `ph`, `temperature_c`, ...) match the Supabase table". They do not —
+  those are the *Supabase* columns; local SQLite is long-format (`ts, basin_id, sensor, value`),
+  one row per individual reading. "The latest 10 rows" locally means ten single sensor values,
+  roughly two sampling cycles, not ten snapshots. Resolved on the Pi: readings are pivoted into
+  wide snapshots before sending, so the app's existing row-mapping path works unchanged and the
+  BLE payload mirrors Supabase. No app-side change needed versus what the plan already assumed.
+- `REMOTE_COLUMNS` moved from `sync.py` to `config.py` so sync and BLE share one mapping and
+  cannot drift into reporting the same reading under different names. It also keeps the BLE
+  process from importing the Supabase client.
+- **Found and fixed a latent performance bug from 2026-10-05.** The partial index
+  `(ts) WHERE synced = 0` cannot serve "newest N readings" — it excludes synced rows, which is
+  nearly the whole table — so `get_recent_readings` would full-scan and sort ~800k rows. Added
+  a plain `readings_ts_idx ON readings (ts)`.
+- Added `busy_timeout` (2s) and `db.connect_readonly()` for other processes.
+- Split the BLE work in two so the risky part is testable without a radio:
+  `ble_protocol.py` is pure (pivot, framing, request parsing) and verified against three
+  synthetic sampling cycles; `ble_server.py` is the `bless`/BlueZ transport.
+- Protocol details: one message per cycle newest-first, fixed column order read positionally,
+  `sensors_ok` false when the newest reading is >3min old (Pi reachable but loop stalled),
+  oversize messages reported as an error rather than silently truncated by the MTU, and a
+  second `GET` during a transfer ignored. Cycle grouping is by time proximity rather than
+  rounding to a fixed interval, which stays correct when a cycle straddles a boundary or the
+  loop runs late.
+- Added `docs/ble-protocol.md` (the Part 3 contract, for the app side) and systemd units in
+  `pi/systemd/`. Both units set `WorkingDirectory` — without it the relative `DB_PATH` would
+  make each service create its own empty `hydro.db` rather than using the real one.
+- Not done: `bless` is untested here (Pi-only). Next step is Part 1 item 5 — nRF Connect on the
+  phone, write `GET 10`, confirm 12 messages arrive — before any app code is written.
+
 **Stopped here (2026-10-01):** waiting on physical wiring — nothing is plugged into the Pi yet.
 The ADS1115 driver, both sensor reads, and `calibrate_ph.py` remain verified only in terms of
 their math, never against physical probes. Next session, in order: wire the ADS1115 (VIN to

@@ -54,6 +54,30 @@ EC_SAMPLES_PER_READ = 5
 # --- SQLite ---
 DB_PATH = "hydro.db"
 SYNC_BATCH_LIMIT = 300      # rows per request; spec §8 caps a push at a few hundred
+SQLITE_BUSY_TIMEOUT_S = 2   # wait out a brief lock instead of erroring; every process sets it
+
+# --- Shared schema ---
+# Local sensor name -> the column the app knows it by. Used by BOTH the Supabase sync and the
+# BLE server, so the two paths cannot drift into reporting the same reading under different
+# names. Sensors absent here have nowhere to go: `water_temp` has no column anywhere yet.
+REMOTE_COLUMNS = {
+    "ph": "ph",
+    "ec": "ec",
+    "temperature": "temperature_c",
+    "humidity": "humidity",
+    "light": "light_intensity",
+    "co2": "co2",
+}
+
+# --- BLE ---
+# Fixed UUIDs. The app hard-codes these same values; see docs/ble-protocol.md.
+BLE_SERVICE_UUID = "6e3a1f80-5c21-4a7e-9d1b-2f8c4a0e7b31"
+BLE_CONTROL_UUID = "6e3a1f81-5c21-4a7e-9d1b-2f8c4a0e7b31"
+BLE_DATA_UUID = "6e3a1f82-5c21-4a7e-9d1b-2f8c4a0e7b31"
+BLE_DEVICE_PREFIX = "HydroPi"
+BLE_NOTIFY_GAP_S = 0.02     # pacing so Android's notification queue does not drop messages
+BLE_MAX_ROWS = 50           # ceiling on what one GET may ask for
+BLE_STALE_AFTER_S = 180     # readings older than this mean the sensor loop has stalled
 
 # --- Supabase / app transmission ---
 # Never hardcode these. Set them in a local .env (see .env.example) or the Pi's environment.

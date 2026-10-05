@@ -9,7 +9,7 @@ import sqlite3
 
 from supabase import Client, create_client
 
-from config import SUPABASE_KEY, SUPABASE_READINGS_TABLE, SUPABASE_URL
+from config import REMOTE_COLUMNS, SUPABASE_KEY, SUPABASE_READINGS_TABLE, SUPABASE_URL
 
 _client: Client | None = None
 
@@ -25,23 +25,10 @@ def get_client() -> Client:
     return _client
 
 
-# Local sensor name -> column on the remote wide table. Sensors absent here have nowhere to
-# land remotely (water_temp has no column, and neither it nor light is implemented yet).
-# Readings for those are dropped by send_batch rather than sent.
-_REMOTE_COLUMNS = {
-    "ph": "ph",
-    "ec": "ec",
-    "temperature": "temperature_c",
-    "humidity": "humidity",
-    "light": "light_intensity",
-    "co2": "co2",
-}
-
-
 def _row_to_record(row: sqlite3.Row) -> dict | None:
     # The remote table is a wide snapshot row (one column per sensor, no basin_id) rather than
     # our local long format, so each reading lands as its own row with the other columns null.
-    column = _REMOTE_COLUMNS.get(row["sensor"])
+    column = REMOTE_COLUMNS.get(row["sensor"])
     if column is None:
         return None
 

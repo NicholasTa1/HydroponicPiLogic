@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 import time
 
-from config import DB_PATH
+from config import DB_PATH, SQLITE_BUSY_TIMEOUT_S
 from sensors.base import Reading
 
 _SCHEMA = """
@@ -28,21 +28,37 @@ CREATE TABLE IF NOT EXISTS readings (
 );
 """
 
-# Partial index: it only holds unsynced rows, so it stays small (a few hundred entries) no
-# matter how large the table grows. Without an index here, finding the sync queue degrades
-# into a full scan — which stays fast for the first week and then quietly does not.
-_INDEX = "CREATE INDEX IF NOT EXISTS readings_unsynced_idx ON readings (ts) WHERE synced = 0;"
+_INDEXES = (
+    # Partial index: holds only unsynced rows, so it stays small (a few hundred entries) no
+    # matter how large the table grows. Without it, finding the sync queue degrades into a
+    # full scan — which stays fast for the first week and then quietly does not.
+    "CREATE INDEX IF NOT EXISTS readings_unsynced_idx ON readings (ts) WHERE synced = 0;",
+    # Full index on ts. The partial index above cannot serve "newest N readings" because it
+    # excludes synced rows, which is nearly the whole table. This is what keeps the BLE
+    # history query from scanning and sorting every row.
+    "CREATE INDEX IF NOT EXISTS readings_ts_idx ON readings (ts);",
+)
 
 
 def connect(db_path: str = DB_PATH) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path)
-    # WAL lets the BLE process read while the control loop writes, instead of intermittent
-    # "database is locked". It is a persistent property of the file, set once.
+    conn = sqlite3.connect(db_path, timeout=SQLITE_BUSY_TIMEOUT_S)
+    # WAL lets other processes (BLE, CV) read while the control loop writes, instead of
+    # intermittent "database is locked". It is a persistent property of the file, set once.
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(_SCHEMA)
     _add_synced_column_if_missing(conn)
-    conn.execute(_INDEX)
+    for index in _INDEXES:
+        conn.execute(index)
     conn.commit()
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def connect_readonly(db_path: str = DB_PATH) -> sqlite3.Connection:
+    """Read-only handle for other processes. Cannot create or migrate anything, by design."""
+    conn = sqlite3.connect(
+        f"file:{db_path}?mode=ro", uri=True, timeout=SQLITE_BUSY_TIMEOUT_S
+    )
     conn.row_factory = sqlite3.Row
     return conn
 
