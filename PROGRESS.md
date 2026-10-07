@@ -324,7 +324,12 @@ Open hardware concerns found in the vendor docs, not yet resolved:
 - nRF Connect note: after the earlier crashed runs, Android cached an empty GATT table and
   showed the service with no characteristics. Fixed by Refresh Services / toggling phone
   Bluetooth, not by any server change.
-- Not done: `bless` is untested here (Pi-only). Next step is Part 1 item 5 — nRF Connect on the
+- **BLE Part 1 verified end to end on hardware.** nRF Connect connects to `HydroPi-homegrow`,
+  `GET 10` returns 12 notifications (header + 10 rows + end), messages ~120 bytes so no
+  chunking is needed. The plan's Part 1 item 5 gate is passed; app work can start.
+- Added `docs/ble-app-plan.md` — the Part 2 plan for the app side, written against what was
+  actually observed rather than assumed, including the Android GATT-cache trap that cost time
+  during bring-up. Next step is Part 1 item 5 — nRF Connect on the
   phone, write `GET 10`, confirm 12 messages arrive — before any app code is written.
 
 **Stopped here (2026-10-01):** waiting on physical wiring — nothing is plugged into the Pi yet.
