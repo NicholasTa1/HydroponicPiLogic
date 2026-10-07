@@ -314,6 +314,16 @@ Open hardware concerns found in the vendor docs, not yet resolved:
   soft block (`sudo rfkill unblock bluetooth`), and "failed to register advertisement" after a
   crashed run is usually a stale advertisement holding BlueZ's slot, cleared by
   `sudo systemctl restart bluetooth`.
+- Added `pi/seed_dummy_data.py`: 10 cycles of plausible readings so the BLE transfer can be
+  tested while the SCD41 is dead and pH/EC are uncalibrated. Rows are inserted with
+  `basin_id = 'dummy'` and marked synced immediately, so BLE can see them (it ignores sync
+  state) but they never upload and cannot pollute the real dataset. Deliberately a separate
+  script rather than dummy values inside `ble_server.py`, which would risk shipping and would
+  mask real readings. Remove with
+  `sqlite3 hydro.db "DELETE FROM readings WHERE basin_id = 'dummy';"`.
+- nRF Connect note: after the earlier crashed runs, Android cached an empty GATT table and
+  showed the service with no characteristics. Fixed by Refresh Services / toggling phone
+  Bluetooth, not by any server change.
 - Not done: `bless` is untested here (Pi-only). Next step is Part 1 item 5 — nRF Connect on the
   phone, write `GET 10`, confirm 12 messages arrive — before any app code is written.
 
