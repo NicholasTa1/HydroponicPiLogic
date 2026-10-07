@@ -303,6 +303,17 @@ Open hardware concerns found in the vendor docs, not yet resolved:
 - Added `docs/ble-protocol.md` (the Part 3 contract, for the app side) and systemd units in
   `pi/systemd/`. Both units set `WorkingDirectory` — without it the relative `DB_PATH` would
   make each service create its own empty `hydro.db` rather than using the real one.
+- **Fixed on first real run:** `bless` requires both `read_request_func` and
+  `write_request_func`; only the write one was set, so anything reading a characteristic hit
+  "read callback is undefined". Reads now return the characteristic's last value — history is
+  delivered by notification, so the read path exists to satisfy bless rather than to serve
+  data. Also switched the control-write handler from `asyncio.create_task` to
+  `run_coroutine_threadsafe`, since that callback is not guaranteed to run on the loop thread
+  and `create_task` would fail there with no running loop.
+- BlueZ setup notes from the same session: `bluetoothctl power on` failing is usually an rfkill
+  soft block (`sudo rfkill unblock bluetooth`), and "failed to register advertisement" after a
+  crashed run is usually a stale advertisement holding BlueZ's slot, cleared by
+  `sudo systemctl restart bluetooth`.
 - Not done: `bless` is untested here (Pi-only). Next step is Part 1 item 5 — nRF Connect on the
   phone, write `GET 10`, confirm 12 messages arrive — before any app code is written.
 

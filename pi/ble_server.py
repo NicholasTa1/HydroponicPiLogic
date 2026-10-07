@@ -54,13 +54,19 @@ class HydroBLEServer:
     def __init__(self):
         self._server = None
         self._busy = False
+        self._loop = None
 
     async def start(self):
-        from bless import BlessServer, BlessGATTCharacteristic  # noqa: F401
+        from bless import BlessServer
         from bless import GATTCharacteristicProperties, GATTAttributePermissions
 
+        self._loop = asyncio.get_running_loop()
         name = f"{BLE_DEVICE_PREFIX}-{socket.gethostname()}"
         self._server = BlessServer(name=name)
+        # bless requires BOTH callbacks. Without the read one it raises "read callback is
+        # undefined" the moment anything reads a characteristic, including a central probing
+        # DATA before subscribing.
+        self._server.read_request_func = self._on_read
         self._server.write_request_func = self._on_write
 
         await self._server.add_new_service(BLE_SERVICE_UUID)
@@ -82,8 +88,16 @@ class HydroBLEServer:
         await self._server.start()
         log.info("advertising as %s, service %s", name, BLE_SERVICE_UUID)
 
+    def _on_read(self, characteristic, **kwargs) -> bytes:
+        """Reads just return the last value written to the characteristic.
+
+        History is delivered by notification, not by reading DATA, so this exists to satisfy
+        bless rather than to serve data.
+        """
+        return characteristic.value or b""
+
     def _on_write(self, characteristic, value, **kwargs):
-        """BlessServer calls this synchronously, so the real work is handed to the loop."""
+        """Called synchronously by bless, so the real work is scheduled onto the loop."""
         if characteristic.uuid.lower() != BLE_CONTROL_UUID.lower():
             return
 
@@ -98,7 +112,9 @@ class HydroBLEServer:
             log.info("transfer already in progress, ignoring GET")
             return
 
-        asyncio.create_task(self._serve(min(wanted, BLE_MAX_ROWS)))
+        # run_coroutine_threadsafe rather than create_task: this callback is not guaranteed to
+        # run on the loop thread, and create_task would fail there with no running loop.
+        asyncio.run_coroutine_threadsafe(self._serve(min(wanted, BLE_MAX_ROWS)), self._loop)
 
     def _notify(self, message: str):
         self._server.get_characteristic(BLE_DATA_UUID).value = message.encode()
