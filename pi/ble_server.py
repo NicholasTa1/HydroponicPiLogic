@@ -94,11 +94,17 @@ class HydroBLEServer:
         History is delivered by notification, not by reading DATA, so this exists to satisfy
         bless rather than to serve data.
         """
+        log.info("read on %s", characteristic.uuid)
         return characteristic.value or b""
 
     def _on_write(self, characteristic, value, **kwargs):
         """Called synchronously by bless, so the real work is scheduled onto the loop."""
+        # Logged before anything else: a write that arrives but does not match CONTROL used to
+        # return silently, which is indistinguishable from the write never arriving at all.
+        log.info("write on %s: %r", characteristic.uuid, bytes(value))
+
         if characteristic.uuid.lower() != BLE_CONTROL_UUID.lower():
+            log.warning("write was not on CONTROL (%s), ignoring", BLE_CONTROL_UUID)
             return
 
         wanted = bp.parse_request(bytes(value))
