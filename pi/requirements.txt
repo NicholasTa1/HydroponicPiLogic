@@ -1,5 +1,9 @@
 # Fill in as each sensor's real driver gets wired up.
-smbus2          # I2C: EZO-EC, EZO-pH, light sensor, etc.
-RPi.GPIO        # relay control (fans, dosing pumps)
+smbus2          # I2C: ADS1115 (pH/EC), SCD41 (CO2/temp/humidity)
+gpiozero        # GPIO: water level input, and relays (fans, dosing pumps) later
 supabase        # sync.py transport
 python-dotenv   # loads .env for local Supabase credentials
+bless           # ble_server.py GATT peripheral
+
+# gpiozero rather than RPi.GPIO: RPi.GPIO installs on a Pi 5 but fails at runtime
+# ("cannot determine SOC peripheral base address"). gpiozero works on both Pi 4 and Pi 5.

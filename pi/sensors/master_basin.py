@@ -17,6 +17,7 @@ from config import (
     PH_INTERCEPT,
     PH_SAMPLES_PER_READ,
     PH_SLOPE,
+    WATER_LEVEL_GPIO_PIN,
 )
 
 
@@ -67,13 +68,30 @@ class PHSensor(Sensor):
 
 
 class WaterLevelSensor(Sensor):
-    name = "water_level"
-    unit = "pct"
+    """DFRobot SEN0204 (XKC-Y25-T12V) non-contact detector on a GPIO input.
 
-    def __init__(self):
+    Reports 1 when liquid is present at the height the probe is mounted at, 0 when it is not.
+    Deliberately NOT reported as a percentage: this is a point detector, not a gauge, and
+    dressing a binary up as "0%" or "100%" would feed the dosing logic a number that looks
+    continuous but is not. Spec §5 wants a real percentage; see PROGRESS.md for the gap.
+    """
+
+    name = "water_level"
+    unit = "bool"
+
+    def __init__(self, pin: int = WATER_LEVEL_GPIO_PIN):
         super().__init__(MASTER_BASIN)
+        self.pin = pin
+        self._device = None
+
+    def _get_device(self):
+        # Built on first read so constructing the sensor stays side-effect free off the Pi.
+        if self._device is None:
+            from gpiozero import DigitalInputDevice
+
+            self._device = DigitalInputDevice(self.pin)
+        return self._device
 
     def read(self) -> Reading:
-        # TODO: load cell (mass -> volume) or ultrasonic (distance -> volume) once hardware
-        # is selected. See PI_CONTROL_SPEC.md open items.
-        raise NotImplementedError
+        value = float(self._get_device().value)
+        return Reading(basin_id=self.basin_id, sensor=self.name, value=value, unit=self.unit)

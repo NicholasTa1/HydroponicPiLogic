@@ -332,6 +332,28 @@ Open hardware concerns found in the vendor docs, not yet resolved:
   during bring-up. Next step is Part 1 item 5 — nRF Connect on the
   phone, write `GET 10`, confirm 12 messages arrive — before any app code is written.
 
+## 2026-10-12
+- Implemented the **DFRobot SEN0204 / XKC-Y25-T12V** on a GPIO input. Note it was handed over as
+  "the water temp sensor" but the datasheet is a non-contact **liquid level** detector, so it
+  fills the `WaterLevelSensor` stub. `water_temp` (spec wants a DS18B20) is still unimplemented.
+- **WIRING HAZARD — needs a divider or level shifter.** This sensor's output swings to its
+  supply voltage and it requires 5V minimum, so OUT sits at 5V. The Pi's GPIO is not 5V
+  tolerant and will be damaged by connecting it directly. Use a divider (10k from OUT to the
+  GPIO, 20k from GPIO to GND gives ~3.3V) or a level shifter. Unlike the ADS1115 case there is
+  no "just power it lower" option, because 3.3V is below the sensor's minimum supply.
+- **It is a point detector, not a gauge.** HIGH means liquid is present at the height it is
+  mounted at; LOW means it is not. It cannot produce a percentage. Reported as `bool` 1/0
+  rather than dressed up as 0%/100%, because spec §5 treats level as a continuous constraint
+  ("check projected post-dose level before actuating", "refill below 70%, never exceed 85%")
+  and feeding that logic a fake percentage would be worse than reporting the truth. One unit
+  gives a single threshold; more units at different heights give more bands. The spec's open
+  item (load cell vs ultrasonic) is still open if a real percentage is needed — a load cell
+  would also give the cleaner transpiration signal §11 wanted.
+- Switched `RPi.GPIO` to `gpiozero` in requirements. RPi.GPIO installs on a Pi 5 but fails at
+  runtime; gpiozero works on both Pi 4 and 5 and will serve the relay outputs too.
+- Water level has no remote column, so like `water_temp` it is logged locally and dropped at
+  sync with a warning rather than silently.
+
 **Stopped here (2026-10-01):** waiting on physical wiring — nothing is plugged into the Pi yet.
 The ADS1115 driver, both sensor reads, and `calibrate_ph.py` remain verified only in terms of
 their math, never against physical probes. Next session, in order: wire the ADS1115 (VIN to

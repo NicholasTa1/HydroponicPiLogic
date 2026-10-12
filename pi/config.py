@@ -46,6 +46,17 @@ EC_ADC_CHANNEL = 1          # A1
 EC_VOLTS_TO_US_CM = 1000
 EC_SAMPLES_PER_READ = 5
 
+# --- Water level (DFRobot SEN0204 / XKC-Y25-T12V non-contact detector) ---
+# DANGER: this sensor's output swings to its supply voltage, and it needs 5V minimum. Its OUT
+# pin therefore sits at 5V, which will damage a Pi GPIO — the Pi is not 5V tolerant. A level
+# shifter or a divider (e.g. 10k from OUT to the GPIO, 20k from the GPIO to GND, giving 3.3V)
+# is REQUIRED, not optional. See PROGRESS.md.
+#
+# It is also a point detector, not a gauge: HIGH means liquid is present at the height it is
+# mounted at, LOW means it is not. It cannot report a percentage, which is what spec §5
+# assumes. One unit gives a single threshold; more units at different heights give more bands.
+WATER_LEVEL_GPIO_PIN = 17   # BCM numbering
+
 # The sensor applies its own temperature compensation internally (2%/degC by default), which
 # is what spec §4 requires — so unlike the EZO plan, nothing needs doing in software here.
 # Calibration is also on-device (buttons SW2/SW3 against 1413 and 12880 uS/cm solutions),
