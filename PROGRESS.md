@@ -380,6 +380,24 @@ Open hardware concerns found in the vendor docs, not yet resolved:
   double precision;` then add `"water_temp": "water_temp_c"` to `REMOTE_COLUMNS` in config.py.
 - All eight sensors now have real implementations; no `NotImplementedError` stubs remain.
 
+- **`water_temp` column added remotely but with the wrong type.** It was created as an ARRAY,
+  not a number: inserting `19.4` fails with "expected JSON array", while `[19.4]` succeeds.
+  Confirmed by testing both rather than inferring from the error. Fix in the SQL editor:
+  `alter table sensor_readings drop column water_temp;`
+  `alter table sensor_readings add column water_temp double precision;`
+  Then uncomment the `water_temp` line in `REMOTE_COLUMNS` in config.py.
+- The mapping is deliberately left commented out until then. **This matters more than it
+  looks:** `send_batch` inserts a batch as one request, so a single unacceptable row fails the
+  whole batch, `sync_pending` returns without marking anything synced, and the same batch
+  retries forever. Enabling the mapping against an array column would therefore have stopped
+  *all* syncing, not just water temperature.
+- Worth fixing regardless: one malformed reading can currently block the entire sync queue
+  indefinitely. Falling back to per-row inserts on a batch failure, or quarantining a row that
+  fails repeatedly, would stop one bad value taking everything else down.
+- Test rows now in `sensor_readings` needing cleanup from the SQL editor (the Pi's key has
+  insert but not delete, so this cannot be done from here):
+  `delete from sensor_readings where id in (12, 13, 14, 15, 16);`
+
 **Stopped here (2026-10-01):** waiting on physical wiring — nothing is plugged into the Pi yet.
 The ADS1115 driver, both sensor reads, and `calibrate_ph.py` remain verified only in terms of
 their math, never against physical probes. Next session, in order: wire the ADS1115 (VIN to

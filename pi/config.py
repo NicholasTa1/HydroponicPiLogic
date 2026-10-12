@@ -85,7 +85,8 @@ SQLITE_BUSY_TIMEOUT_S = 2   # wait out a brief lock instead of erroring; every p
 # --- Shared schema ---
 # Local sensor name -> the column the app knows it by. Used by BOTH the Supabase sync and the
 # BLE server, so the two paths cannot drift into reporting the same reading under different
-# names. Sensors absent here have nowhere to go: `water_temp` has no column anywhere yet.
+# names. `water_level` is absent because no column exists for it, and it is a boolean rather
+# than a measurement — see PROGRESS.md.
 REMOTE_COLUMNS = {
     "ph": "ph",
     "ec": "ec",
@@ -93,6 +94,7 @@ REMOTE_COLUMNS = {
     "humidity": "humidity",
     "light": "light_intensity",
     "co2": "co2",
+    # "water_temp": "water_temp",   # re-enable once the remote column is numeric, not an array
 }
 
 # --- BLE ---
