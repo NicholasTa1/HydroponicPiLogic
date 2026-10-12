@@ -57,6 +57,21 @@ EC_SAMPLES_PER_READ = 5
 # assumes. One unit gives a single threshold; more units at different heights give more bands.
 WATER_LEVEL_GPIO_PIN = 17   # BCM numbering
 
+# --- Water temperature (DS18B20, 1-Wire) ---
+# Needs 1-Wire enabled: `sudo raspi-config nonint do_onewire 0` then reboot, plus the 4.7k
+# pullup from DATA to VCC that ships with the probe. 3.0-5.5V, so run it from 3.3V and the
+# data line is already Pi-safe — no divider needed, unlike the level sensor.
+# Empty dict = auto-detect, which only works with exactly one probe on the bus. With more than
+# one, map each basin to its probe's factory id (run `ls /sys/bus/w1/devices/` to list them).
+WATER_TEMP_DEVICE_IDS: dict[str, str] = {}
+
+# --- Light (Adafruit VEML7700, I2C 0x10) ---
+# Gain and integration time trade range against resolution. 1/8 and 100ms is the library
+# default and tops out near 30k lux; grow lights at canopy can exceed that, in which case the
+# driver raises rather than silently reporting a saturated value. Drop to 25ms for more range.
+VEML7700_GAIN = 0.125       # one of 0.125, 0.25, 1, 2
+VEML7700_INTEGRATION_MS = 100   # one of 25, 50, 100, 200, 400, 800
+
 # The sensor applies its own temperature compensation internally (2%/degC by default), which
 # is what spec §4 requires — so unlike the EZO plan, nothing needs doing in software here.
 # Calibration is also on-device (buttons SW2/SW3 against 1413 and 12880 uS/cm solutions),

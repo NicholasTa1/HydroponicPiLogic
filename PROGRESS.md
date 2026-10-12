@@ -354,6 +354,32 @@ Open hardware concerns found in the vendor docs, not yet resolved:
 - Water level has no remote column, so like `water_temp` it is logged locally and dropped at
   sync with a warning rather than silently.
 
+- **DS18B20 water temperature** (Adafruit 381) implemented via the kernel's 1-Wire sysfs
+  interface rather than a library — Linux already drives the bus, so there is nothing to break
+  on a kernel update and it behaves the same on Pi 4 and 5. Needs 1-Wire enabled
+  (`sudo raspi-config nonint do_onewire 0` + reboot) and the supplied 4.7k pullup. It runs at
+  3.0-5.5V, so at 3.3V the data line is already Pi-safe — no divider, unlike the level sensor.
+  Each probe has a unique factory id and several can share one pin, which is how multiple
+  basins will work; `WATER_TEMP_DEVICE_IDS` maps basin to probe, empty meaning auto-detect a
+  single probe. Reads are refused rather than reported on CRC failure, on a missing field, and
+  on exactly 85.0 C — the power-on reset value, which means a lost conversion or missing
+  pullup, not a real temperature.
+- **VEML7700 light sensor** implemented at register level (I2C 0x10, fixed). Verified the
+  lux-per-count maths against all 24 gain/integration combinations in the datasheet's range
+  table — every one matches. Note this part is little-endian, unlike the big-endian SCD4x.
+- **Caught a dangerous trap in the lux correction.** Vishay's 4th-order non-linearity
+  correction is widely applied unconditionally, but it is only *characterised* at gain 1/8
+  with 100ms integration for raw counts above 100. Applied outside that it extrapolates badly:
+  at 20k lux it returns +269%, which is divergence presented as a precise number. It is now
+  applied only at that operating point, and a raw count above 10000 there is refused with
+  instructions to reduce the integration time rather than reported. Darkness still reads 0
+  without error, since lights-off is legitimate data.
+- Light maps to the existing `light_intensity` column, so it syncs with no schema change.
+- **`water_temp` is now the only sensor with no remote column.** It is logged locally and
+  dropped at sync. To fix: `alter table sensor_readings add column if not exists water_temp_c
+  double precision;` then add `"water_temp": "water_temp_c"` to `REMOTE_COLUMNS` in config.py.
+- All eight sensors now have real implementations; no `NotImplementedError` stubs remain.
+
 **Stopped here (2026-10-01):** waiting on physical wiring — nothing is plugged into the Pi yet.
 The ADS1115 driver, both sensor reads, and `calibrate_ph.py` remain verified only in terms of
 their math, never against physical probes. Next session, in order: wire the ADS1115 (VIN to
