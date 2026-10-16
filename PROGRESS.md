@@ -34,30 +34,59 @@ ideally through a 10K series resistor. The board wants a full 5.00V for accuracy
 **SenseCAP S-EC-01 (analog mode) -> ADS1115**: Red `V+` to Pi 5V, Black `GND` to Pi GND,
 Blue `O1` to **A1**. No series resistor needed — its output maxes at 2V.
 
-**Adafruit SCD-41 (PID 5190) -> Pi**: I2C, not through the ADC. STEMMA QT to Pi 3.3V, GND,
-SDA, SCL — it shares the bus with the ADS1115. Appears at **0x62**.
+**Adafruit SCD-41 (PID 5190) -> Pi** — CO2, air temp, humidity. I2C, not through the ADC.
+STEMMA QT to Pi 3.3V, GND, SDA, SCL. Appears at **0x62**.
+
+**Adafruit VEML7700 -> Pi** — light. I2C. STEMMA QT to Pi 3.3V, GND, SDA, SCL. Appears at
+**0x10**. Has its own regulator, level shifting and I2C pullups, so 3.3V or 5V are both safe.
+
+**DS18B20 (Adafruit 381) -> Pi** — water temperature. 1-Wire, not I2C. Red to **3.3V**, Black
+or Blue to GND, White or Yellow to **GPIO 4 (pin 7)**. Requires the supplied **4.7k pullup**
+between data and VCC, and 1-Wire enabled: `sudo raspi-config nonint do_onewire 0` + reboot.
+Appears as `/sys/bus/w1/devices/28-*`, not in `i2cdetect`. No divider needed (3.0-5.5V part).
+
+**DFRobot SEN0204 water level -> Pi** — GPIO, not I2C. Brown `VCC` to **5V**, Blue `GND` to Pi
+GND, Yellow `OUT` through a **divider** to **GPIO 17 (pin 11)**.
+
+> **The divider is mandatory.** This sensor's output swings to its supply, and it needs 5V
+> minimum, so OUT sits at 5V and will damage a Pi GPIO. 10k from OUT to the GPIO plus 20k from
+> that GPIO to GND gives ~3.3V. There is no "power it lower" option here, unlike the ADS1115:
+> 3.3V is below the sensor's minimum supply.
 
 **Why VIN must be 3.3V, not 5V:** the ADS1115 breakout's SDA/SCL pullups go to VIN. At 5V they
 back-feed the Pi's GPIO, which is not 5V tolerant. The tradeoff is that the ADC's absolute max
 analog input becomes 3.6V (VDD + 0.3V), which the 5V-powered pH board can exceed under a fault
 — hence the series resistor. The EC sensor is unaffected either way at 0-2V.
 
-Expected I2C addresses (`i2cdetect -y 1`): **0x48** ADS1115, **0x62** SCD-41.
+Expected I2C addresses (`i2cdetect -y 1`): **0x48** ADS1115, **0x62** SCD-41,
+**0x10** VEML7700. The water level and DS18B20 sensors are not on I2C and will never appear.
+
+**If the scan goes completely empty, suspect the device you just added.** One miswired board
+pulls SDA or SCL low and every device disappears at once, which looks like total failure
+rather than one bad part. Unplug the newest thing and rescan. Swapped SDA/SCL is the usual
+cause.
 
 ## Reference: running on the Pi
 
 ```bash
 cd ~/HydroponicPiLogic/pi
 source .venv/bin/activate          # create once: python3 -m venv .venv
-pip install supabase python-dotenv smbus2
+pip install -r requirements.txt    # supabase, python-dotenv, smbus2, gpiozero, bless
 
-i2cdetect -y 1                     # expect 48 once the ADC is wired
+i2cdetect -y 1                     # expect 48, 62, 10 for whatever is wired
+ls /sys/bus/w1/devices/            # expect a 28-* entry for the DS18B20
+
 python3 read_adc.py                # live ADC voltages (pH/EC), Ctrl-C to stop
-python3 read_sensors.py            # every implemented sensor, converted values
+python3 read_sensors.py            # every sensor, converted values -- the main bring-up tool
 python3 calibrate_ph.py            # needs pH 4.00 + 9.18 buffer solutions
 python3 test_ph_sync.py            # one reading end to end into Supabase
+python3 seed_dummy_data.py         # 10 fake cycles, for testing BLE without sensors
+python3 ble_server.py              # BLE peripheral; pair with nRF Connect
 python3 main.py                    # the real 30s sample / 5min sync loop
 ```
+
+One-time setup, each needing a reboot: `sudo raspi-config nonint do_i2c 0` (I2C) and
+`sudo raspi-config nonint do_onewire 0` (1-Wire, for the DS18B20).
 
 Run these from inside `pi/` — `DB_PATH` is relative, so `hydro.db` lands in the working
 directory. Neither `.env` (credentials) nor `.venv` (packages) comes down with a `git clone`;
