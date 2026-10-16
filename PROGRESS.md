@@ -66,6 +66,27 @@ pulls SDA or SCL low and every device disappears at once, which looks like total
 rather than one bad part. Unplug the newest thing and rescan. Swapped SDA/SCL is the usual
 cause.
 
+## Reference: hardware status
+
+What has actually been verified against real hardware, as distinct from written and
+unit-tested. Keep this current — "the code exists" and "the sensor works" are different
+claims, and the dated entries below cannot be read at a glance.
+
+| Sensor | Part | Status as of 2026-10-16 |
+|---|---|---|
+| ADC | ADS1115 | **Working** — enumerates at 0x48 |
+| pH | DFRobot SEN0161/9 | **Working** — reads through the ADC. Still uncalibrated |
+| Light | VEML7700 | **Working** — initial failure was wiring |
+| EC | SenseCAP S-EC-01 | **Not working** |
+| Water level | DFRobot SEN0204 | **Not working** |
+| Water temp | DS18B20 | **Not working** |
+| CO2 / air temp / humidity | SCD41 | **Blocked** — first unit dead on arrival, awaiting replacement |
+| BLE transfer | — | **Working** — verified end to end with nRF Connect |
+
+Useful deduction from the above: pH and EC share the same ADS1115, and pH works, so the ADC
+and its wiring are fine. An EC fault is therefore in the EC sensor, its own wiring, or its
+power — not the ADC path.
+
 ## Reference: running on the Pi
 
 ```bash
