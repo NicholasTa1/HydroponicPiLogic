@@ -79,7 +79,7 @@ claims, and the dated entries below cannot be read at a glance.
 | Light | VEML7700 | **Working** — initial failure was wiring |
 | EC | SenseCAP S-EC-01 | **Not yet tested** — cable has no exposed conductors to connect to |
 | Water level | DFRobot SEN0204 | **Not yet tested** — blocked on building the divider |
-| Water temp | DS18B20 | **Not yet tested** — blocked on fitting the 4.7k pullup |
+| Water temp | DS18B20 | **Working** — needed 1-Wire enabling via raspi-config + reboot |
 | CO2 / air temp / humidity | SCD41 | **Blocked** — first unit dead on arrival, awaiting replacement |
 | BLE transfer | — | **Working** — verified end to end with nRF Connect |
 
