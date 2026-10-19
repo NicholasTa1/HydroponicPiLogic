@@ -440,7 +440,10 @@ Open hardware concerns found in the vendor docs, not yet resolved:
   `alter table sensor_readings drop column water_temp;`
   `alter table sensor_readings add column water_temp double precision;`
   Then uncomment the `water_temp` line in `REMOTE_COLUMNS` in config.py.
-- The mapping is deliberately left commented out until then. **This matters more than it
+- **Resolved 2026-10-19:** the column was rebuilt as `double precision` and the mapping
+  re-enabled; a mixed pH / light / water_temp batch was verified landing in Supabase. All
+  three working sensors now sync.
+- (Below is why the mapping was held back in the meantime.) The mapping was left commented out. **This matters more than it
   looks:** `send_batch` inserts a batch as one request, so a single unacceptable row fails the
   whole batch, `sync_pending` returns without marking anything synced, and the same batch
   retries forever. Enabling the mapping against an array column would therefore have stopped

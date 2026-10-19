@@ -94,7 +94,7 @@ REMOTE_COLUMNS = {
     "humidity": "humidity",
     "light": "light_intensity",
     "co2": "co2",
-    # "water_temp": "water_temp",   # re-enable once the remote column is numeric, not an array
+    "water_temp": "water_temp",
 }
 
 # --- BLE ---
