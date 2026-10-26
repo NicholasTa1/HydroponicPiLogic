@@ -74,8 +74,8 @@ claims, and the dated entries below cannot be read at a glance.
 
 | Sensor | Part | Status as of 2026-10-16 |
 |---|---|---|
-| ADC | ADS1115 | **Working** — enumerates at 0x48 |
-| pH | DFRobot SEN0161/9 | **Working** — reads through the ADC. Still uncalibrated |
+| ADC | ADS1115 | **Analog section likely damaged** — see 2026-10-26. Needs replacing |
+| pH | DFRobot SEN0161/9 | **Blocked** — read correctly once, now blocked on the ADC |
 | Light | VEML7700 | **Working** — initial failure was wiring |
 | EC | SenseCAP S-EC-01 | **Not yet tested** — cable has no exposed conductors to connect to |
 | Water level | DFRobot SEN0204 | **Not yet tested** — blocked on building the divider |
@@ -88,8 +88,7 @@ water temp have never produced a reading at all — all three are blocked on phy
 not on software faults. Nobody should go looking for bugs in their drivers until each has
 been connected and produced at least one value.
 
-Useful deduction: pH and EC share the same ADS1115, and pH works, so the ADC and its wiring
-are known good. Whatever EC needs, it is not in the ADC path.
+pH and EC both depend on the ADS1115, so while that is damaged neither can be tested.
 
 ## Reference: running on the Pi
 
@@ -454,6 +453,31 @@ Open hardware concerns found in the vendor docs, not yet resolved:
 - Test rows now in `sensor_readings` needing cleanup from the SQL editor (the Pi's key has
   insert but not delete, so this cannot be done from here):
   `delete from sensor_readings where id in (12, 13, 14, 15, 16);`
+
+## 2026-10-26
+- **The ADS1115's analog front end appears to be damaged, and the digital side is fine.**
+  Symptoms: `i2cdetect` sees 0x48, the config register reads back exactly what is written, but
+  all four channels report multi-volt spreads — including A0 jumpered directly to a shared
+  ground rail. A chip that stores configuration correctly but cannot convert any input is a
+  damaged analog section, not a wiring fault.
+- **How it most likely happened, because this is repeatable and worth avoiding:** VIN came
+  loose at some point (the giveaway was the power LED flickering only while `i2cdetect` ran —
+  the chip was being back-powered through the SDA/SCL protection diodes, so VDD was
+  effectively 0). Meanwhile the 5V-powered pH board kept driving ~2V into A0. The datasheet's
+  absolute maximum analog input is **VDD + 0.3V**, so 2V into an unpowered part is far past the
+  damage threshold. The digital side recovered when VIN was fixed; the analog inputs did not.
+- **Rule for the replacement, and for every analog sensor after it:** bring the ADC up first
+  and confirm `i2cdetect` shows 0x48 with a steady power LED, and only then connect a powered
+  sensor's output to a channel. Never let a powered sensor drive an input on an ADC that is not
+  itself powered.
+- Added `pi/diagnose_adc.py`, which is what made this diagnosable: it checks config register
+  readback separately from conversions. Voltage readings alone cannot distinguish a damaged
+  chip from a floating input, which is why this took several rounds to pin down.
+- Wrong turns worth recording so they are not repeated: the A+/A- pins at the ends of the
+  channel header are outputs, not inputs, and the channel order runs A+ A3 A2 A1 A0 A- — but
+  that was not the problem here, the jumper was on A0 throughout. Breadboard power rails split
+  in the middle on many boards, also not the cause. Both are still worth checking first on any
+  similar fault, since they cost nothing to rule out.
 
 **Stopped here (2026-10-01):** waiting on physical wiring — nothing is plugged into the Pi yet.
 The ADS1115 driver, both sensor reads, and `calibrate_ph.py` remain verified only in terms of
