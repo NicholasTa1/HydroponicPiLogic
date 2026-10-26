@@ -74,7 +74,7 @@ claims, and the dated entries below cannot be read at a glance.
 
 | Sensor | Part | Status as of 2026-10-16 |
 |---|---|---|
-| ADC | ADS1115 | **Analog section likely damaged** — see 2026-10-26. Needs replacing |
+| ADC | ADS1115 | **Tabled, unresolved** — see 2026-10-26. Power supply is the current suspicion |
 | pH | DFRobot SEN0161/9 | **Blocked** — read correctly once, now blocked on the ADC |
 | Light | VEML7700 | **Working** — initial failure was wiring |
 | EC | SenseCAP S-EC-01 | **Not yet tested** — cable has no exposed conductors to connect to |
@@ -473,6 +473,16 @@ Open hardware concerns found in the vendor docs, not yet resolved:
 - Added `pi/diagnose_adc.py`, which is what made this diagnosable: it checks config register
   readback separately from conversions. Voltage readings alone cannot distinguish a damaged
   chip from a floating input, which is why this took several rounds to pin down.
+- **Later evidence argues against the damage theory, and this is unresolved.** With nothing
+  connected, A0/A1 sit at a stable ~0.5V; connecting anything to *either* makes *both* swing.
+  A dead analog front end would be garbage regardless, so the chip is converting. Floating
+  being stable while connected is noisy is backwards from normal, and points at the ADC's own
+  ground/supply reference moving rather than the chip being dead. Readings are single-ended
+  (MUX 0x4-0x7, AINx vs GND), so the ground reference *is* the measurement reference — a bad
+  one makes readings meaningless rather than merely noisy, which is why this looked like chip
+  damage. Current suspicion is the Pi's power supply; `vcgencmd get_throttled` and measuring
+  VIN under load are the unfinished checks. Differential mode (A0 vs A1) would sidestep the
+  ground reference entirely and is worth trying as a diagnostic.
 - Wrong turns worth recording so they are not repeated: the A+/A- pins at the ends of the
   channel header are outputs, not inputs, and the channel order runs A+ A3 A2 A1 A0 A- — but
   that was not the problem here, the jumper was on A0 throughout. Breadboard power rails split
