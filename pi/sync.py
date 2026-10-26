@@ -26,6 +26,12 @@ def get_client() -> Client:
 
 
 def _row_to_record(row: sqlite3.Row) -> dict | None:
+    # Readings that failed their validity checks stay local. They are kept as the record of a
+    # fault (spec §7), but publishing them would put known-bad numbers on the dashboard next to
+    # good ones with no way to tell them apart.
+    if not row["valid"]:
+        return None
+
     # The remote table is a wide snapshot row (one column per sensor, no basin_id) rather than
     # our local long format, so each reading lands as its own row with the other columns null.
     column = REMOTE_COLUMNS.get(row["sensor"])
@@ -55,7 +61,7 @@ def send_batch(readings: list[sqlite3.Row]) -> bool:
             records.append(record)
 
     if skipped:
-        print(f"[sync] no remote column, dropping readings for: {', '.join(sorted(skipped))}")
+        print(f"[sync] not sent (invalid or no remote column): {', '.join(sorted(skipped))}")
     if not records:
         return True
 

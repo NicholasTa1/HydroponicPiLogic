@@ -1,8 +1,8 @@
 """Orchestration loop: read every sensor every 30s, buffer in SQLite, sync+clear every 5 min.
 
-Dosing/alarm/validity logic is intentionally left out of this skeleton — see PI_CONTROL_SPEC.md
-for where that lands later. Outlier/glitch detection is handled off-Pi (time series forecasting
-on the synced data), so nothing here filters or rejects readings before storage.
+Every reading is checked against spec §4 before it is trusted. Failed readings are still
+stored, flagged with the reason, but never drive control and never sync. Dosing is still to
+come. Outlier/glitch detection over the synced history remains off-Pi.
 """
 
 import time
@@ -11,6 +11,7 @@ import db
 import sync
 from config import BASIN_IDS, SAMPLE_INTERVAL_S, SYNC_BATCH_LIMIT, SYNC_INTERVAL_S
 from control import FanController
+from validity import ValidityTracker
 from sensors.environment import CO2Sensor, HumiditySensor, LightSensor, TemperatureSensor, WaterTempSensor
 from sensors.master_basin import ECSensor, PHSensor, WaterLevelSensor
 
@@ -31,14 +32,31 @@ def build_sensors():
     return master, per_basin
 
 
-def read_all(conn, master_sensors, per_basin_sensors, fan_controllers):
+def _store(conn, validity, reading) -> bool:
+    """Store one reading with its validity verdict. Returns whether it can be trusted.
+
+    Invalid readings are kept, not discarded: they are the record of a fault, and spec §7
+    wants the raw data. They simply must not drive anything.
+    """
+    ts = time.time()
+    reason = validity.check(reading.basin_id, reading.sensor, reading.value, ts)
+    if reason:
+        print(f"[invalid] {reading.sensor} ({reading.basin_id}): {reason}")
+    db.insert_reading(conn, reading, ts=ts, invalid_reason=reason)
+    return reason is None
+
+
+def read_all(conn, master_sensors, per_basin_sensors, fan_controllers, validity):
     for sensor in master_sensors:
         try:
-            db.insert_reading(conn, sensor.read())
+            reading = sensor.read()
         except NotImplementedError:
-            pass  # hardware not wired up yet
+            continue  # hardware not wired up yet
         except Exception as exc:
             print(f"[sensor error] {sensor.name} ({sensor.basin_id}): {exc}")
+            continue
+
+        _store(conn, validity, reading)
 
     for basin_id, sensors in per_basin_sensors.items():
         for sensor in sensors:
@@ -50,8 +68,10 @@ def read_all(conn, master_sensors, per_basin_sensors, fan_controllers):
                 print(f"[sensor error] {sensor.name} ({sensor.basin_id}): {exc}")
                 continue
 
-            db.insert_reading(conn, reading)
-            if sensor.name == "temperature":
+            trusted = _store(conn, validity, reading)
+            # Spec §4: never act on a reading that failed its checks. Holding the fan at its
+            # current state is safer than driving it from a probe we know is lying.
+            if trusted and sensor.name == "temperature":
                 fan_controllers[basin_id].update(reading.value)
 
 
@@ -76,13 +96,14 @@ def main():
     conn = db.connect()
     master_sensors, per_basin_sensors = build_sensors()
     fan_controllers = {basin_id: FanController(basin_id) for basin_id in BASIN_IDS}
+    validity = ValidityTracker()
 
     last_sync = time.monotonic()
 
     while True:
         loop_start = time.monotonic()
 
-        read_all(conn, master_sensors, per_basin_sensors, fan_controllers)
+        read_all(conn, master_sensors, per_basin_sensors, fan_controllers, validity)
 
         if time.monotonic() - last_sync >= SYNC_INTERVAL_S:
             sync_pending(conn)

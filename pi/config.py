@@ -15,6 +15,26 @@ SYNC_INTERVAL_S = 300       # how often readings are pushed out and the local ta
 MASTER_BASIN = "master"
 BASIN_IDS = ["basin_1"]     # add one entry per physical basin as they come online
 
+# --- Sensor validity (spec §4) ---
+# Ranges are "is this physically plausible", deliberately wider than the control setpoints in
+# §5: a reading can be valid and still be wrong for lettuce. pH 3-9 and EC 0-5 are from the
+# spec; the rest bound what the hardware can legitimately report.
+# max_change_per_s catches a probe jumping rather than drifting. Spec §4 gives pH as >1.5
+# units in 30s, which is 0.05/s.
+VALIDITY_RULES = {
+    "ph":          {"min": 3.0, "max": 9.0, "max_change_per_s": 0.05},
+    "ec":          {"min": 0.0, "max": 5.0, "max_change_per_s": 0.1},
+    "temperature": {"min": 0.0, "max": 40.0},
+    "water_temp":  {"min": 0.0, "max": 40.0},
+    "humidity":    {"min": 0.0, "max": 100.0},
+    "co2":         {"min": 0.0, "max": 10000.0},
+    "light":       {"min": 0.0, "max": 150000.0},
+    # Binary by nature, so it would always look "stuck" and can never drift.
+    "water_level": {"min": 0.0, "max": 1.0, "stuck_check": False},
+}
+STUCK_READING_COUNT = 20    # identical readings in a row before calling a probe dead
+STUCK_VALUE_DECIMALS = 4    # spec §4: "identical value to 4 dp"
+
 # --- Fan feedback loop (bang-bang, per basin) ---
 FAN_ON_TEMP_F = 72.0
 FAN_OFF_TEMP_F = 58.0

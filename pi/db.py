@@ -24,9 +24,18 @@ CREATE TABLE IF NOT EXISTS readings (
     sensor TEXT NOT NULL,
     value REAL,
     unit TEXT NOT NULL,
-    synced INTEGER NOT NULL DEFAULT 0
+    synced INTEGER NOT NULL DEFAULT 0,
+    valid INTEGER NOT NULL DEFAULT 1,
+    invalid_reason TEXT
 );
 """
+
+# Columns added after the first databases were created, with the default each needs.
+_MIGRATIONS = {
+    "synced": "INTEGER NOT NULL DEFAULT 0",
+    "valid": "INTEGER NOT NULL DEFAULT 1",
+    "invalid_reason": "TEXT",
+}
 
 _INDEXES = (
     # Partial index: holds only unsynced rows, so it stays small (a few hundred entries) no
@@ -46,7 +55,7 @@ def connect(db_path: str = DB_PATH) -> sqlite3.Connection:
     # intermittent "database is locked". It is a persistent property of the file, set once.
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(_SCHEMA)
-    _add_synced_column_if_missing(conn)
+    _apply_migrations(conn)
     for index in _INDEXES:
         conn.execute(index)
     conn.commit()
@@ -63,17 +72,35 @@ def connect_readonly(db_path: str = DB_PATH) -> sqlite3.Connection:
     return conn
 
 
-def _add_synced_column_if_missing(conn: sqlite3.Connection) -> None:
-    """Migrate databases created before readings carried sync state."""
-    columns = {row[1] for row in conn.execute("PRAGMA table_info(readings)")}
-    if "synced" not in columns:
-        conn.execute("ALTER TABLE readings ADD COLUMN synced INTEGER NOT NULL DEFAULT 0")
+def _apply_migrations(conn: sqlite3.Connection) -> None:
+    """Add columns that databases created by earlier versions will not have."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(readings)")}
+    for column, definition in _MIGRATIONS.items():
+        if column not in existing:
+            conn.execute(f"ALTER TABLE readings ADD COLUMN {column} {definition}")
 
 
-def insert_reading(conn: sqlite3.Connection, reading: Reading, ts: float | None = None) -> None:
+def insert_reading(
+    conn: sqlite3.Connection,
+    reading: Reading,
+    ts: float | None = None,
+    invalid_reason: str | None = None,
+) -> None:
+    """Store a reading. A failed validity check is recorded, never silently dropped — the raw
+    record spec §7 wants includes the bad readings, which are what make a fault visible later.
+    """
     conn.execute(
-        "INSERT INTO readings (ts, basin_id, sensor, value, unit) VALUES (?, ?, ?, ?, ?)",
-        (ts if ts is not None else time.time(), reading.basin_id, reading.sensor, reading.value, reading.unit),
+        "INSERT INTO readings (ts, basin_id, sensor, value, unit, valid, invalid_reason)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            ts if ts is not None else time.time(),
+            reading.basin_id,
+            reading.sensor,
+            reading.value,
+            reading.unit,
+            0 if invalid_reason else 1,
+            invalid_reason,
+        ),
     )
     conn.commit()
 
