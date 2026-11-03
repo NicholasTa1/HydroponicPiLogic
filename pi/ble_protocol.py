@@ -3,9 +3,8 @@
 Kept separate from ble_server.py so the part most likely to be wrong — pivoting readings and
 framing messages — can be tested without a radio or a Pi.
 
-The local database stores one row per individual reading (long format). The app expects the
-same wide snapshot shape it already gets from Supabase, so readings are pivoted here: one
-message per sampling cycle, carrying every sensor read in that cycle.
+The local database stores one wide row per sampling cycle, which is the same snapshot shape
+the app already gets from Supabase, so each row becomes one message after renaming columns.
 
 See docs/ble-protocol.md for the contract the app implements against.
 """
@@ -30,46 +29,22 @@ def _iso(ts: float) -> str:
     return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc).isoformat()
 
 
-def group_into_cycles(rows, gap_s: float) -> list[list]:
-    """Split readings into sampling cycles, newest cycle first.
-
-    Rows arrive newest-first. Readings taken in one pass of the control loop land milliseconds
-    apart, so a gap materially larger than that marks a cycle boundary. Grouping by proximity
-    rather than by rounding to a fixed interval keeps this correct when a cycle straddles an
-    interval boundary or the loop runs late.
-    """
-    cycles: list[list] = []
-    current: list = []
-    previous_ts = None
-
-    for row in rows:
-        ts = row["ts"]
-        if previous_ts is not None and abs(previous_ts - ts) > gap_s:
-            cycles.append(current)
-            current = []
-        current.append(row)
-        previous_ts = ts
-
-    if current:
-        cycles.append(current)
-    return cycles
-
-
-def snapshot(cycle) -> dict:
-    """Collapse one cycle's readings into a single wide record keyed by app column names."""
+def snapshot(row) -> dict:
+    """Turn one local cycle row into a record keyed by app column names."""
     record = {column: None for column in COLUMNS}
-    record["recorded_at"] = _iso(max(row["ts"] for row in cycle))
-    for row in cycle:
-        column = REMOTE_COLUMNS.get(row["sensor"])
-        if column is not None:
-            record[column] = row["value"]
+    record["recorded_at"] = _iso(row["ts"])
+    for local, remote in REMOTE_COLUMNS.items():
+        if remote in record:
+            record[remote] = row[local]
     return record
 
 
-def build_messages(rows, wanted: int, gap_s: float, now: float) -> list[str]:
-    """Header, one message per snapshot, then an end marker — ready to notify in order."""
-    cycles = group_into_cycles(rows, gap_s)[:wanted]
-    snapshots = [snapshot(cycle) for cycle in cycles]
+def build_messages(rows, wanted: int, now: float) -> list[str]:
+    """Header, one message per snapshot, then an end marker — ready to notify in order.
+
+    `rows` are cycle rows, newest first.
+    """
+    snapshots = [snapshot(row) for row in rows[:wanted]]
 
     newest_ts = max((row["ts"] for row in rows), default=None)
     sensors_ok = newest_ts is not None and (now - newest_ts) <= BLE_STALE_AFTER_S

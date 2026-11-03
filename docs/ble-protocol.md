@@ -76,8 +76,8 @@ error, no `end` marker follows — fail the transfer and let the user retry.
 
 ## Notes for the app side
 
-- One row is one **sampling cycle**, not one sensor reading. The Pi stores readings
-  individually and pivots them into these wide rows before sending.
+- One row is one **sampling cycle**, not one sensor reading. The Pi stores one wide row per
+  cycle, so these rows are sent as stored, with columns renamed to the app's names.
 - Timestamps are offset-aware UTC. Convert for display rather than assuming local time.
 - A second `GET` while a transfer is in flight is ignored, so a double tap is harmless but
   will not restart the transfer — wait for `end` or the timeout.

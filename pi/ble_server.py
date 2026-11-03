@@ -25,29 +25,23 @@ from config import (
     BLE_MAX_ROWS,
     BLE_NOTIFY_GAP_S,
     BLE_SERVICE_UUID,
-    SAMPLE_INTERVAL_S,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("ble")
-
-# Readings within one control-loop pass land milliseconds apart; anything beyond half a
-# sampling interval is a different cycle.
-CYCLE_GAP_S = SAMPLE_INTERVAL_S / 2
 
 
 def read_snapshots(wanted: int) -> list[str]:
     """Blocking database work. Called via asyncio.to_thread so it never stalls the BLE loop."""
     import time
 
-    # Enough rows to cover the requested cycles even when every sensor reports.
-    row_limit = max(wanted * 12, 60)
+    # One row is one cycle, so the row count is the number of snapshots wanted.
     conn = db.connect_readonly()
     try:
-        rows = db.get_recent_readings(conn, row_limit)
+        rows = db.get_recent_readings(conn, wanted)
     finally:
         conn.close()
-    return bp.build_messages(rows, wanted, CYCLE_GAP_S, time.time())
+    return bp.build_messages(rows, wanted, time.time())
 
 
 class HydroBLEServer:

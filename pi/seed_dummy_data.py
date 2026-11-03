@@ -1,4 +1,4 @@
-"""Insert 10 cycles of plausible dummy readings, for testing the BLE transfer without sensors.
+"""Insert 10 cycles of plausible dummy readings (one row each), for testing the BLE transfer without sensors.
 
     python3 seed_dummy_data.py
 
@@ -14,7 +14,6 @@ import time
 
 import db
 from config import SAMPLE_INTERVAL_S
-from sensors.base import Reading
 
 CYCLES = 10
 BASIN = "dummy"
@@ -22,38 +21,36 @@ BASIN = "dummy"
 # Centre values sit in the lettuce targets from PI_CONTROL_SPEC.md §5, so the app sees
 # something realistic rather than obvious filler.
 SENSORS = [
-    ("ph", 5.8, 0.15, "pH"),
-    ("ec", 1.10, 0.08, "mS/cm"),
-    ("temperature", 22.0, 1.0, "C"),
-    ("humidity", 60.0, 4.0, "pct"),
-    ("co2", 800.0, 60.0, "ppm"),
-    ("water_temp", 19.5, 0.5, "C"),   # no app column: exercises the drop path
+    ("ph", 5.8, 0.15),
+    ("ec", 1.10, 0.08),
+    ("temperature", 22.0, 1.0),
+    ("humidity", 60.0, 4.0),
+    ("co2", 800.0, 60.0),
+    ("water_temp", 19.5, 0.5),   # no app column: exercises the drop path
 ]
 
 
 def main():
     conn = db.connect()
     now = time.time()
-    ids = []
 
     for cycle in range(CYCLES):
         # Oldest first, ending at now, spaced like the real control loop.
         cycle_ts = now - (CYCLES - 1 - cycle) * SAMPLE_INTERVAL_S
-        for offset, (sensor, centre, spread, unit) in enumerate(SENSORS):
-            value = round(random.gauss(centre, spread / 2), 2)
-            db.insert_reading(
-                conn,
-                Reading(BASIN, sensor, value, unit),
-                ts=cycle_ts + offset * 0.05,
-            )
+        values = {
+            sensor: round(random.gauss(centre, spread / 2), 2)
+            for sensor, centre, spread in SENSORS
+        }
+        db.insert_cycle(conn, BASIN, values, ts=cycle_ts)
 
-    ids = [row["id"] for row in db.get_recent_readings(conn, CYCLES * len(SENSORS))]
-    db.mark_synced(conn, ids)
+    rows = db.get_recent_readings(conn, CYCLES)
+    db.mark_synced(conn, [row["id"] for row in rows])
 
-    print(f"inserted {len(ids)} readings across {CYCLES} cycles, marked synced (will not upload)")
+    print(f"inserted {len(rows)} cycles, marked synced (will not upload)")
     print("newest cycle:")
-    for row in db.get_recent_readings(conn, len(SENSORS)):
-        print(f"  {row['sensor']:12s} {row['value']:8.2f} {row['unit']}")
+    newest = rows[0]
+    for sensor, _, _ in SENSORS:
+        print(f"  {sensor:12s} {newest[sensor]:8.2f}")
 
 
 if __name__ == "__main__":

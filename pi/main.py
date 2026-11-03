@@ -1,8 +1,9 @@
-"""Orchestration loop: read every sensor every 30s, buffer in SQLite, sync+clear every 5 min.
+"""Orchestration loop: read every sensor every 30s, store one row per cycle, sync every 5 min.
 
-Every reading is checked against spec §4 before it is trusted. Failed readings are still
-stored, flagged with the reason, but never drive control and never sync. Dosing is still to
-come. Outlier/glitch detection over the synced history remains off-Pi.
+Every reading is checked against spec §4 before it is trusted. A failed reading is stored as
+NULL in that cycle's row, with its raw value and reason recorded in the faults table, and never
+drives control or syncs. Dosing is still to come. Outlier/glitch detection over the synced
+history remains off-Pi.
 """
 
 import time
@@ -32,55 +33,61 @@ def build_sensors():
     return master, per_basin
 
 
-def _store(conn, validity, reading) -> bool:
-    """Store one reading with its validity verdict. Returns whether it can be trusted.
+def _read_trusted(conn, validity, sensor) -> float | None:
+    """Read one sensor and return its value only if it can be trusted, else None.
 
-    Invalid readings are kept, not discarded: they are the record of a fault, and spec §7
-    wants the raw data. They simply must not drive anything.
+    Untrusted readings are not discarded: the raw value and the reason go into the faults
+    table, because they are the record of a fault (spec §7). They simply must not drive
+    anything or reach the synced dataset.
     """
     ts = time.time()
+    try:
+        reading = sensor.read()
+    except NotImplementedError:
+        return None  # hardware not wired up yet; not a fault
+    except Exception as exc:
+        print(f"[sensor error] {sensor.name} ({sensor.basin_id}): {exc}")
+        db.insert_fault(conn, sensor.basin_id, sensor.name, None, f"read error: {exc}", ts=ts)
+        return None
+
     reason = validity.check(reading.basin_id, reading.sensor, reading.value, ts)
     if reason:
         print(f"[invalid] {reading.sensor} ({reading.basin_id}): {reason}")
-    db.insert_reading(conn, reading, ts=ts, invalid_reason=reason)
-    return reason is None
+        db.insert_fault(conn, reading.basin_id, reading.sensor, reading.value, reason, ts=ts)
+        return None
+    return reading.value
 
 
 def read_all(conn, master_sensors, per_basin_sensors, fan_controllers, validity):
-    for sensor in master_sensors:
-        try:
-            reading = sensor.read()
-        except NotImplementedError:
-            continue  # hardware not wired up yet
-        except Exception as exc:
-            print(f"[sensor error] {sensor.name} ({sensor.basin_id}): {exc}")
-            continue
+    """Read every sensor once and store one row per grow basin for this cycle.
 
-        _store(conn, validity, reading)
+    The master basin feeds every grow basin, so its values (pH, EC, water level) are read once
+    and written into each basin's row.
+    """
+    cycle_ts = time.time()  # one timestamp for the whole cycle's row
+
+    master_values = {sensor.name: _read_trusted(conn, validity, sensor) for sensor in master_sensors}
 
     for basin_id, sensors in per_basin_sensors.items():
+        values = dict(master_values)
         for sensor in sensors:
-            try:
-                reading = sensor.read()
-            except NotImplementedError:
-                continue  # hardware not wired up yet
-            except Exception as exc:
-                print(f"[sensor error] {sensor.name} ({sensor.basin_id}): {exc}")
-                continue
+            values[sensor.name] = _read_trusted(conn, validity, sensor)
 
-            trusted = _store(conn, validity, reading)
-            # Spec §4: never act on a reading that failed its checks. Holding the fan at its
-            # current state is safer than driving it from a probe we know is lying.
-            if trusted and sensor.name == "temperature":
-                fan_controllers[basin_id].update(reading.value)
+        # Spec §4: never act on a reading that failed its checks. Holding the fan at its
+        # current state is safer than driving it from a probe we know is lying.
+        temperature = values.get("temperature")
+        if temperature is not None:
+            fan_controllers[basin_id].update(temperature)
+
+        db.insert_cycle(conn, basin_id, values, ts=cycle_ts)
 
 
 def sync_pending(conn):
-    """Push unsynced readings in batches until the queue drains (spec §8).
+    """Push unsynced cycles in batches until the queue drains (spec §8).
 
-    A whole batch is marked synced on success, including readings with no remote column.
-    Those have nowhere to go, and leaving them unsynced would park them at the front of the
-    oldest-first queue forever, eventually filling every batch and starving real readings.
+    A whole batch is marked synced on success, including rows with nothing to send (every
+    value NULL). Those have nowhere to go, and leaving them unsynced would park them at the
+    front of the oldest-first queue forever, eventually filling every batch.
     """
     while True:
         readings = db.get_unsynced_readings(conn, SYNC_BATCH_LIMIT)

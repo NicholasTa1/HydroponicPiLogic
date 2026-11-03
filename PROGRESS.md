@@ -489,6 +489,35 @@ Open hardware concerns found in the vendor docs, not yet resolved:
   in the middle on many boards, also not the cause. Both are still worth checking first on any
   similar fault, since they cost nothing to rule out.
 
+## 2026-11-03
+- **Local storage is now one wide row per 30s cycle instead of one row per reading.**
+  `readings` has one column per sensor (`ph`, `ec`, `water_level`, `temperature`, `water_temp`,
+  `humidity`, `co2`, `light`) plus `ts`, `basin_id`, `synced`. Why: Supabase and the BLE app
+  both want one row per cycle, and each had to rebuild cycles from individual readings; BLE did
+  it by guessing from timestamp gaps, which long pH settling waits could break. Supabase now
+  gets one complete row per cycle instead of one mostly-null row per reading.
+- **A reading that fails validity, or a sensor that raises, is NULL in the row and recorded in
+  a new `faults` table** (`ts`, `basin_id`, `sensor`, raw `value`, `reason`). This keeps the
+  spec §7 record of bad readings that the old `valid`/`invalid_reason` columns held. Faults
+  never sync. A sensor raising `NotImplementedError` (not wired) is just NULL, not a fault.
+- Master-basin values (pH, EC, water level) are read once per cycle and written into every grow
+  basin's row. With one basin there is no duplication; with more, they repeat per row.
+- **Migration:** on first start, an old long-format `readings` table is renamed to
+  `readings_long` (data kept, nothing reads or syncs it). Any of its rows still unsynced at
+  that point will not upload. Once confirmed unneeded: `sqlite3 hydro.db "DROP TABLE readings_long;"`
+- Trade-offs accepted: each row has one timestamp (the cycle start), not one per sensor; a
+  crash mid-cycle loses that cycle's good readings, since the row is written at the end
+  (faults are committed immediately).
+- Updated `sync.py`, `ble_protocol.py`/`ble_server.py` (no more cycle grouping),
+  `seed_dummy_data.py`, `test_ph_sync.py`, and `docs/ble-protocol.md`. The BLE wire format
+  is unchanged. Checked off-Pi against a scratch database (migration, a cycle with an invalid
+  and an erroring sensor, sync record mapping, BLE messages); not yet run on the Pi or against
+  Supabase.
+- Still open: `sensor_readings` has no `basin_id`, so a second basin cannot be told apart
+  remotely. Spotted in passing: `ble_server.py` opens the database read-only, so if it starts
+  before `main.py` has migrated an old database, BLE requests fail with `db busy` until
+  `main.py` runs once.
+
 **Stopped here (2026-10-01):** waiting on physical wiring — nothing is plugged into the Pi yet.
 The ADS1115 driver, both sensor reads, and `calibrate_ph.py` remain verified only in terms of
 their math, never against physical probes. Next session, in order: wire the ADS1115 (VIN to

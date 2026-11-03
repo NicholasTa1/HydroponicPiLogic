@@ -1,5 +1,5 @@
-"""Push a batch of readings to the remote Supabase Postgres table. Table is only cleared
-locally (see db.clear_readings) after this confirms the batch landed.
+"""Push a batch of readings to the remote Supabase Postgres table. Rows are only marked
+synced locally (db.mark_synced) after this confirms the batch landed.
 """
 
 from __future__ import annotations
@@ -26,42 +26,26 @@ def get_client() -> Client:
 
 
 def _row_to_record(row: sqlite3.Row) -> dict | None:
-    # Readings that failed their validity checks stay local. They are kept as the record of a
-    # fault (spec §7), but publishing them would put known-bad numbers on the dashboard next to
-    # good ones with no way to tell them apart.
-    if not row["valid"]:
-        return None
+    """One local cycle row becomes one remote row, keyed by the remote column names.
 
-    # The remote table is a wide snapshot row (one column per sensor, no basin_id) rather than
-    # our local long format, so each reading lands as its own row with the other columns null.
-    column = REMOTE_COLUMNS.get(row["sensor"])
-    if column is None:
+    Values that failed their validity checks are already NULL locally, so known-bad numbers
+    never reach the dashboard. Returns None when the row has nothing to send.
+    """
+    values = {remote: row[local] for local, remote in REMOTE_COLUMNS.items()}
+    if all(value is None for value in values.values()):
         return None
 
     recorded_at = datetime.datetime.fromtimestamp(row["ts"], tz=datetime.timezone.utc).isoformat()
-    return {column: row["value"], "recorded_at": recorded_at}
+    return {"recorded_at": recorded_at, **values}
 
 
 def send_batch(readings: list[sqlite3.Row]) -> bool:
     """Return True once Supabase has acknowledged the insert.
 
-    Readings with no remote column are skipped rather than raised on: one unmappable sensor
-    must not take down the sync loop (and with it every other reading in the batch).
+    Every record carries every mapped column (NULL where there was no trusted value), so all
+    records in one insert share the same shape.
     """
-    if not readings:
-        return True
-
-    records = []
-    skipped = set()
-    for row in readings:
-        record = _row_to_record(row)
-        if record is None:
-            skipped.add(row["sensor"])
-        else:
-            records.append(record)
-
-    if skipped:
-        print(f"[sync] not sent (invalid or no remote column): {', '.join(sorted(skipped))}")
+    records = [record for record in map(_row_to_record, readings) if record is not None]
     if not records:
         return True
 

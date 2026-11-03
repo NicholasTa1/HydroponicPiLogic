@@ -17,9 +17,9 @@ def main():
     reading = ph.read()
     print(f"read: {reading}")
 
-    db.insert_reading(conn, reading)
+    db.insert_cycle(conn, reading.basin_id, {"ph": reading.value})
     rows = db.get_unsynced_readings(conn, SYNC_BATCH_LIMIT)
-    print(f"local rows pending sync: {len(rows)}")
+    print(f"local cycles pending sync: {len(rows)}")
 
     if sync.send_batch(rows):
         db.mark_synced(conn, [row["id"] for row in rows])
