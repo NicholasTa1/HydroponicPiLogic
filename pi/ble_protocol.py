@@ -17,7 +17,8 @@ import json
 from config import BLE_STALE_AFTER_S, REMOTE_COLUMNS
 
 # Column order is fixed and part of the contract: the app reads values positionally.
-COLUMNS = ["recorded_at", "ph", "ec", "temperature_c", "humidity", "light_intensity", "co2"]
+# New columns go on the end so existing positions never move.
+COLUMNS = ["recorded_at", "ph", "ec", "temperature_c", "humidity", "light_intensity", "co2", "water_temp"]
 
 # A conservative ceiling for one notification at the negotiated 517-byte MTU. Messages are far
 # smaller than this in practice; exceeding it means the contract needs chunking, so it is

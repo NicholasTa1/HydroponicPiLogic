@@ -525,3 +525,18 @@ their math, never against physical probes. Next session, in order: wire the ADS1
 `read_adc.py` to sanity-check raw voltages and pin down the EC range variant, run
 `calibrate_ph.py` against pH 4.00 and 9.18 buffers, paste the slope/intercept into `config.py`,
 then `test_ph_sync.py` for a real end-to-end reading.
+
+## 2026-11-07
+- **BLE transfer now includes water temperature.** `ble_protocol.COLUMNS` gained `water_temp`
+  (°C, from the DS18B20). Why: it was already measured, stored locally and synced to Supabase
+  via `REMOTE_COLUMNS`, but the BLE snapshot silently dropped it because `COLUMNS` didn't list
+  it, so the app showed "—" for water temperature whenever it synced over Bluetooth.
+- Appended as the **last** column so every existing position is unchanged. A client reading
+  values positionally by the old 7-column layout still gets the right values; the app maps
+  values by the `cols` names in the header, so it picks the new column up without changes.
+- Updated `docs/ble-protocol.md` and `docs/ble-app-plan.md` (header example, row example,
+  columns table), and dropped the stale "no app column" comment in `seed_dummy_data.py`.
+- Checked off-Pi: `build_messages` emits 8 columns with `water_temp` last, and a row stays far
+  under the 500-byte notification limit. Not yet run on the Pi.
+- The app repo keeps its own copy of `ble-protocol.md`; it needs the same update.
+

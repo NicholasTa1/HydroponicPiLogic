@@ -26,7 +26,7 @@ SENSORS = [
     ("temperature", 22.0, 1.0),
     ("humidity", 60.0, 4.0),
     ("co2", 800.0, 60.0),
-    ("water_temp", 19.5, 0.5),   # no app column: exercises the drop path
+    ("water_temp", 19.5, 0.5),
 ]
 
 
