@@ -78,7 +78,7 @@ claims, and the dated entries below cannot be read at a glance.
 | pH | DFRobot SEN0161/9 | **Blocked** — read correctly once, now blocked on the ADC |
 | Light | VEML7700 | **Working** — initial failure was wiring |
 | EC | SenseCAP S-EC-01 | **Not yet tested** — cable has no exposed conductors to connect to |
-| Water level | DFRobot SEN0204 | **Not yet tested** — blocked on building the divider |
+| Water level | DFRobot SEN0204 | **Working** — 12k/22k divider, and a shared ground |
 | Water temp | DS18B20 | **Working** — needed 1-Wire enabling via raspi-config + reboot |
 | CO2 / air temp / humidity | SCD41 | **Blocked** — first unit dead on arrival, awaiting replacement |
 | BLE transfer | — | **Working** — verified end to end with nRF Connect |
@@ -89,6 +89,29 @@ not on software faults. Nobody should go looking for bugs in their drivers until
 been connected and produced at least one value.
 
 pH and EC both depend on the ADS1115, so while that is damaged neither can be tested.
+
+## Reference: grounding
+
+**Three separate sensor faults on this project have turned out to be grounding.** Before
+debugging anything else on a new sensor, confirm its ground is physically tied to the Pi's.
+
+A voltage only means anything relative to a reference. A sensor on its own supply — however
+clean and reliable that supply is — produces readings the Pi cannot interpret unless the two
+share a ground. The symptoms look like everything except what they are:
+
+| Sensor | Looked like | Actually was |
+|---|---|---|
+| SCD41 | Dead device, absent from `i2cdetect` | External 5V supply ground not tied to Pi |
+| ADS1115 | Damaged chip: config read back fine, all channels garbage | Reference moving (unresolved, same family of cause) |
+| SEN0204 | Marginal logic level, random HIGH/LOW with a correct LED | External supply ground not tied to Pi |
+
+The tell for the water level sensor was **random** switching rather than a regular pattern.
+A marginal voltage gives something rhythmic or noise-correlated; a floating reference gives
+randomness. Worth remembering, because the divider maths looked right the whole time and the
+sensor's own LED was correct throughout — everything pointed away from the real cause.
+
+A useful test needing no multimeter: jumper the GPIO straight to 3.3V, then to GND. Both
+should read rock solid. If they do, the Pi input is fine and the fault is in the signal path.
 
 ## Reference: running on the Pi
 
