@@ -89,7 +89,12 @@ class WaterLevelSensor(Sensor):
         if self._device is None:
             from gpiozero import DigitalInputDevice
 
-            self._device = DigitalInputDevice(self.pin)
+            # pull_up=None disables the internal pull resistor. gpiozero defaults to a
+            # pull-down, which sits in parallel with the external divider's lower leg and
+            # drags the HIGH level toward the Pi's 2.31V threshold — enough to make a
+            # correctly-sized divider read intermittently. The sensor drives both rails
+            # itself, so no internal pull is wanted.
+            self._device = DigitalInputDevice(self.pin, pull_up=None, active_state=True)
         return self._device
 
     def read(self) -> Reading:
