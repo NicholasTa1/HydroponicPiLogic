@@ -7,6 +7,8 @@ Rinse the probe with distilled water between buffers, or you carry one solution 
 next and skew the calibration.
 """
 
+from __future__ import annotations
+
 import statistics
 import time
 

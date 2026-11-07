@@ -1,5 +1,7 @@
 """Central config for the Pi control subsystem. Tune values here, not in the modules."""
 
+from __future__ import annotations
+
 import os
 
 from dotenv import load_dotenv
