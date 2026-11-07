@@ -74,7 +74,7 @@ claims, and the dated entries below cannot be read at a glance.
 
 | Sensor | Part | Status as of 2026-10-16 |
 |---|---|---|
-| ADC | ADS1115 | **Tabled, unresolved** — see 2026-10-26. Power supply is the current suspicion |
+| ADC | ADS1115 | **Working** — was never damaged; the fault was the analog ground reference |
 | pH | DFRobot SEN0161/9 | **Blocked** — read correctly once, now blocked on the ADC |
 | Light | VEML7700 | **Working** — initial failure was wiring |
 | EC | SenseCAP S-EC-01 | **Not yet tested** — cable has no exposed conductors to connect to |
@@ -102,7 +102,7 @@ share a ground. The symptoms look like everything except what they are:
 | Sensor | Looked like | Actually was |
 |---|---|---|
 | SCD41 | Dead device, absent from `i2cdetect` | External 5V supply ground not tied to Pi |
-| ADS1115 | Damaged chip: config read back fine, all channels garbage | Reference moving (unresolved, same family of cause) |
+| ADS1115 | Damaged chip: config read back fine, all channels garbage | Analog ground reference, same cause. Chip was fine |
 | SEN0204 | Marginal logic level, random HIGH/LOW with a correct LED | External supply ground not tied to Pi |
 
 The tell for the water level sensor was **random** switching rather than a regular pattern.
