@@ -1,0 +1,29 @@
+# BLE peripheral serving recent readings when Wi-Fi is unavailable.
+# Separate from hydro-sensors so a BLE or BlueZ failure cannot stop sensor logging.
+
+[Unit]
+Description=Hydroponic BLE history server
+After=bluetooth.target
+Requires=bluetooth.target
+
+[Service]
+Type=simple
+User=pi
+# Same reason as hydro-sensors: DB_PATH is relative and must resolve to the real database.
+WorkingDirectory=/home/pi/HydroponicPiLogic/pi
+ExecStart=/home/pi/HydroponicPiLogic/pi/.venv/bin/python ble_server.py
+Restart=always
+RestartSec=5
+
+# Not niced below the CV pipeline on purpose. BLE is idle almost all the time, but when a
+# phone is connected BlueZ drops the link if the server answers too slowly — it needs little
+# CPU, but it needs it promptly. The database read runs in a thread for the same reason.
+Nice=0
+CPUQuota=25%
+MemoryMax=100M
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,4 +1,9 @@
 .venv/
+venv/
 captures/
-.env
 __pycache__/
+*.pyc
+
+# local secrets and local-only data
+.env
+*.db

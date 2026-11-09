@@ -1,0 +1,28 @@
+# Sensor logging and the control loop. Install with:
+#   sudo cp systemd/*.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now hydro-sensors
+# Adjust User/paths if the Pi's username is not "pi".
+
+[Unit]
+Description=Hydroponic sensor logging and control loop
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+# Required: DB_PATH is relative, so without this the service would create its own empty
+# hydro.db somewhere else rather than using the real one.
+WorkingDirectory=/home/pi/HydroponicPiLogic/pi
+ExecStart=/home/pi/HydroponicPiLogic/pi/.venv/bin/python main.py
+Restart=always
+RestartSec=5
+
+# Data collection takes priority over everything else on the Pi; a missed reading cannot be
+# recovered, whereas a slow BLE response or a dropped CV frame can.
+Nice=-5
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
