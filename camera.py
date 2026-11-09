@@ -3,11 +3,27 @@ import statistics
 import time
 from datetime import datetime
 from pathlib import Path
-
+import os
+from supabase import create_client, Client
 import cv2
 import numpy as np
+from dotenv import load_dotenv
+from gpiozero import Device, InputDevice, OutputDevice
+from gpiozero.pins.mock import MockFactory
 
+if os.name == "nt":
+    Device.pin_factory = MockFactory()
+
+load_dotenv()
 # ---------------- CONFIG ----------------
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise ValueError("Missing Supabase credentials. Check your .env file.")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 CAMERA_INDEX = 0
 WIDTH, HEIGHT = 1280, 720     # 720p keeps memory/CPU low on a Pi; raise if you need detail
 WARMUP_FRAMES = 30            # discard frames so the sensor settles
@@ -30,12 +46,62 @@ BASELINE_WINDOW = 5           # compare against median of the last N captures
 CANOPY_DROP_LIMIT = 0.15      # flag if canopy shrinks >15% vs baseline
 STRESS_RISE_LIMIT = 0.10      # flag if yellow/brown fraction rises by 0.10
 EXG_DROP_LIMIT = 0.03         # flag if mean green strength drops by this much
+CAMERA_INTERVAL_SEC = 15
 # ----------------------------------------
+SENSOR_PIN = 27               # BCM GPIO 27 wired to SEN0204 'OUT' (via 3.3V divider)
+VALVE_PIN = 17                # BCM GPIO 17 wired to 24 VAC relay for NITRA valve
+RELAY_ACTIVE_HIGH = False     # False for standard Active-LOW relay boards
 
+SENSOR_DEBOUNCE_SEC = 2.0     # Confirm LOW for 2s to ignore splashes
+OVERFILL_BUFFER_SEC = 5.0     # Extra fill after hitting 1 (set 0.0 for instant stop)
+MAX_REFILL_TIMEOUT_SEC = 45.0 # Hard cutoff if sensor falls off the tank wall
+COOLDOWN_SEC = 300.0          # Minimum 5-minute wait between refills
+
+level_sensor = InputDevice(SENSOR_PIN, pull_up=False)
+valve_relay = OutputDevice(VALVE_PIN, active_high=RELAY_ACTIVE_HIGH, initial_value=False)
+last_refill_time = 0.0
+
+def check_and_refill_water():
+    """Checks SEN0204 sensor; opens NITRA valve when 0 (LOW) and stops when 1 (HIGH)."""
+    global last_refill_time
+
+    for _ in range(4):
+        if level_sensor.is_active:  # 1 (HIGH) = water present
+            return False, 0.0
+        time.sleep(SENSOR_DEBOUNCE_SEC / 4.0)
+
+    if (time.time() - last_refill_time) < COOLDOWN_SEC:
+        return False, 0.0
+
+    start_time = time.time()
+    try:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Water LOW (0). Opening NITRA valve...")
+        valve_relay.on()
+
+        while not level_sensor.is_active:
+            if (time.time() - start_time) >= MAX_REFILL_TIMEOUT_SEC:
+                print("WARNING: 45s safety timeout reached before sensor read 1! Stopping valve.")
+                break
+            time.sleep(0.5)
+        else:
+            print("Sensor output 1 (Water detected)! Stopping refill...")
+            if OVERFILL_BUFFER_SEC > 0:
+                time.sleep(OVERFILL_BUFFER_SEC)
+
+        duration = round(time.time() - start_time, 1)
+        last_refill_time = time.time()
+        return True, duration
+
+    except Exception as e:
+        print(f"Error during water refill: {e}")
+        return False, round(time.time() - start_time, 1)
+    finally:
+        valve_relay.off()
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] NITRA valve CLOSED.")
 
 def capture_image():
-    # cam = cv2.VideoCapture(CAMERA_INDEX)
-    cam = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_V4L2)
+    cam = cv2.VideoCapture(CAMERA_INDEX)
+    # cam = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_V4L2)
     if not cam.isOpened():
         print("Error: could not open camera.")
         return None
@@ -98,6 +164,7 @@ def analyze(image):
     green_px = cv2.countNonZero(green)
     stress_px = cv2.countNonZero(stress)
     canopy_px = green_px + stress_px
+    green_percent = round((green_px / canopy_px) * 100, 2) if canopy_px > 0 else 0.0
 
     metrics = {
         "green_px": green_px,
@@ -106,6 +173,7 @@ def analyze(image):
         "stress_fraction": round(stress_px / canopy_px, 4) if canopy_px else 0.0,
         "mean_exg": round(float(exg[green > 0].mean()), 4) if green_px else 0.0,
         "mean_hue": round(float(hue[green > 0].mean()), 2) if green_px else 0.0,
+        "green_percent": green_percent,
     }
 
     # Overlay for visual verification: green = healthy, red = yellow/brown
@@ -158,6 +226,23 @@ def cleanup_old_images():
             f.unlink()
 
 
+def push_to_supabase(metrics, alert):
+    table_name = "sensor_readings"
+
+    payload = {
+        "recorded_at": datetime.now().isoformat(),
+        "canopy_cm2": metrics["canopy_cm2"],
+        "green_pixels": metrics["green_px"],
+        "green_percent": metrics["green_percent"],
+        "is_wilting": alert
+    }
+    
+    try:
+        response = supabase.table(table_name).insert(payload).execute()
+        print("Successfully synced metrics to database.")
+    except Exception as e:
+        print(f"Failed to insert database row: {e}")
+
 def main():
     OUTPUT_DIR.mkdir(exist_ok=True)
     image = capture_image()
@@ -180,6 +265,33 @@ def main():
     elif flagged:
         print("Flagged this capture; will alert if it repeats.")
 
+    push_to_supabase(metrics, alert)
 
 if __name__ == "__main__":
-    main()
+    print("Starting Unified Hydroponics Controller (Press Ctrl+C to stop)...")
+    last_camera_run = 0.0
+
+    # Local Windows simulator: starts empty (0), then triggers water full (1) after 5s
+    if os.name == "nt":
+        import threading
+        def simulate_water_rising():
+            time.sleep(5)
+            print("\n[SIMULATOR] Driving virtual SEN0204 pin to 1 (HIGH - Water Detected!)")
+            level_sensor.pin.drive_high()
+
+        level_sensor.pin.drive_low()
+        threading.Thread(target=simulate_water_rising, daemon=True).start()
+
+    try:
+        while True:
+            check_and_refill_water()
+
+            if (time.time() - last_camera_run) >= CAMERA_INTERVAL_SEC:
+                print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Running hourly camera capture...")
+                main()
+                last_camera_run = time.time()
+
+            time.sleep(10)
+    except KeyboardInterrupt:
+        print("\nStopping script safely. Ensuring NITRA valve is closed...")
+        valve_relay.off()
