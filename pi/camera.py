@@ -48,8 +48,8 @@ STRESS_RISE_LIMIT = 0.10      # flag if yellow/brown fraction rises by 0.10
 EXG_DROP_LIMIT = 0.03         # flag if mean green strength drops by this much
 CAMERA_INTERVAL_SEC = 15
 # ----------------------------------------
-SENSOR_PIN = 11               # BCM GPIO 27 wired to SEN0204 'OUT' (via 3.3V divider)
-VALVE_PIN = 19                # BCM GPIO 17 wired to 24 VAC relay for NITRA valve
+SENSOR_PIN = 11               # BCM GPIO 11 wired to SEN0204 'OUT' (via 3.3V divider)
+VALVE_PIN = 19                # BCM GPIO 19 wired to 24 VAC relay for NITRA valve
 RELAY_ACTIVE_HIGH = False     # False for standard Active-LOW relay boards
 
 SENSOR_DEBOUNCE_SEC = 2.0     # Confirm LOW for 2s to ignore splashes
