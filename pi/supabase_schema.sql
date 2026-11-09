@@ -10,6 +10,14 @@
 --   recorded_at     timestamptz
 --
 -- A `co2` column was added 2026-10-03 and is mapped in sync.py; CO2 now syncs.
+-- A `water_temp` column (double precision) exists as of 2026-10-13.
+--
+-- `water_level` (boolean, true = water at the overflow sensor) is mapped in config.py as of
+-- 2026-11-07. The column must exist before sync.py sends it, or every insert fails. Run once
+-- in the Supabase SQL editor:
+
+alter table sensor_readings add column if not exists water_level boolean;
+
 --
 -- It has no basin_id column, so it only fits a single basin's worth of readings. sync.py
 -- currently only maps the `ph` column (see _row_to_record). Once more basins/sensors need to

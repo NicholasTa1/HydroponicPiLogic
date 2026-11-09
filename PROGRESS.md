@@ -573,3 +573,54 @@ their math, never against physical probes. Next session, in order: wire the ADS1
 `read_adc.py` to sanity-check raw voltages and pin down the EC range variant, run
 `calibrate_ph.py` against pH 4.00 and 9.18 buffers, paste the slope/intercept into `config.py`,
 then `test_ph_sync.py` for a real end-to-end reading.
+
+## 2026-11-07
+- **BLE transfer now includes water temperature.** `ble_protocol.COLUMNS` gained `water_temp`
+  (°C, from the DS18B20). Why: it was already measured, stored locally and synced to Supabase
+  via `REMOTE_COLUMNS`, but the BLE snapshot silently dropped it because `COLUMNS` didn't list
+  it, so the app showed "—" for water temperature whenever it synced over Bluetooth.
+- Appended as the **last** column so every existing position is unchanged. A client reading
+  values positionally by the old 7-column layout still gets the right values; the app maps
+  values by the `cols` names in the header, so it picks the new column up without changes.
+- Updated `docs/ble-protocol.md` and `docs/ble-app-plan.md` (header example, row example,
+  columns table), and dropped the stale "no app column" comment in `seed_dummy_data.py`.
+- Checked off-Pi: `build_messages` emits 8 columns with `water_temp` last, and a row stays far
+  under the 500-byte notification limit. Not yet run on the Pi.
+- The app repo keeps its own copy of `ble-protocol.md`; it needs the same update.
+
+### Water level now leaves the Pi (for in-app overflow alerts)
+- **`water_level` syncs to Supabase and is sent over BLE**, so the app can warn about an
+  overflow. Mapped in `REMOTE_COLUMNS`; BLE `COLUMNS` gained it as the last column (9 now).
+- **Sent as true/false, not 0.0/1.0.** SQLite stores every sensor as REAL, so the new
+  `config.BOOLEAN_COLUMNS` and `remote_value()` convert it on the way out. Both `sync.py` and
+  `ble_protocol.snapshot()` use the same helper, so the two paths can't disagree.
+- **Meaning:** `true` = water has reached the SEN0204, which is mounted at the overflow height.
+  Still unverified on the bench (the sensor is "not yet tested" above), including whether this
+  module's output is inverted. Check by hand before trusting an alert.
+- **Supabase needs the column first.** `supabase_schema.sql` has the one-line
+  `alter table ... add column water_level boolean`; until it is run, every sync insert fails
+  because the payload carries a column the table doesn't have.
+- This is the in-app-only version: the app shows the alert while it is open. No debounce or
+  pump cut-off on the Pi yet, and no push notifications — both still open.
+- Checked off-Pi with a stubbed `dotenv`/`supabase`: 1.0 → `true`, 0.0 → `false`, missing →
+  `null`, identically in the sync record and the BLE row.
+
+
+## 2026-11-09
+- **Checked what sync sends against the live `sensor_readings` table.** The table has `id`,
+  `recorded_at`, `ph`, `ec`, `water_temp`, `temperature_c`, `humidity`, `light_intensity`, `co2`,
+  `username`, `water_level`. Every column sync sends exists there. The one gap was `username`:
+  nothing filled it, and the app shows a signed-in user only rows tagged with their username, so
+  every row the Pi uploaded was invisible in the app.
+- **Sync now tags every row with a placeholder username**, `config.SUPABASE_USERNAME`, default
+  `admin` (the app's test login), overridable via `SUPABASE_USERNAME` in `.env`. It is a
+  placeholder until the app moves to Supabase Auth; it is not sensor data.
+- Sensors with no reading still sync as `null`. Nothing is faked into the dataset.
+- The 40 rows currently in the table (ids 92-131) are seeded test data, all `admin`; earlier Pi
+  test rows (ids 12-16) are gone.
+- Checked off-Pi with a stubbed `supabase`: the record's keys match the table's columns
+  exactly (`id` excepted), and an all-empty cycle is still skipped. Not yet run against Supabase.
+- **The level sensor has moved to the low-water mark** (the app now alerts on low water, not
+  overflow). `true` still means water at the sensor, so nothing changes on the Pi, but the
+  "overflow height" wording in `config.py`, `docs/ble-protocol.md` and the entry above is out of
+  date. Rows uploaded while it sat at the overflow height read `false` and now look like low water.

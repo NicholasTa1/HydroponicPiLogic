@@ -26,8 +26,8 @@ below, so the plan stands alone until then.
 ### Message format
 
 ```json
-{"t":"hdr","cols":["recorded_at","ph","ec","temperature_c","humidity","light_intensity","co2"],"n":10,"sensors_ok":true}
-{"t":"row","i":0,"v":["2026-10-07T18:50:48+00:00",5.93,1.17,22.02,60.61,null,821.68]}
+{"t":"hdr","cols":["recorded_at","ph","ec","temperature_c","humidity","light_intensity","co2","water_temp"],"n":10,"sensors_ok":true}
+{"t":"row","i":0,"v":["2026-10-07T18:50:48+00:00",5.93,1.17,22.02,60.61,null,821.68,19.48]}
 {"t":"end"}
 {"t":"err","msg":"db busy"}
 ```
@@ -46,6 +46,7 @@ below, so the plan stands alone until then.
 | `humidity` | % RH | |
 | `light_intensity` | lux | Sensor not built yet — currently always `null` |
 | `co2` | ppm | |
+| `water_temp` | °C | Reservoir water temperature |
 
 **No chunking is needed.** An earlier draft allowed for splitting rows across notifications;
 measured messages are ~120 bytes, so a row always fits in one. If a message ever exceeds the
