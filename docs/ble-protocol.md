@@ -31,8 +31,8 @@ Subscribe to DATA **before** writing to CONTROL, or the first notifications are 
 All messages are compact JSON, one per notification, each well under 500 bytes.
 
 ```json
-{"t":"hdr","cols":["recorded_at","ph","ec","temperature_c","humidity","light_intensity","co2","water_temp"],"n":10,"sensors_ok":true}
-{"t":"row","i":0,"v":["2026-10-09T08:54:20.250000+00:00",6.0,1.12,24.0,62.0,null,820.0,19.5]}
+{"t":"hdr","cols":["recorded_at","ph","ec","temperature_c","humidity","light_intensity","co2","water_temp","water_level"],"n":10,"sensors_ok":true}
+{"t":"row","i":0,"v":["2026-10-09T08:54:20.250000+00:00",6.0,1.12,24.0,62.0,null,820.0,19.5,false]}
 {"t":"end"}
 ```
 
@@ -53,6 +53,7 @@ All messages are compact JSON, one per notification, each well under 500 bytes.
 | `light_intensity` | number | lux | Sensor not yet built — currently always `null` |
 | `co2` | number | ppm | |
 | `water_temp` | number | °C | Reservoir water temperature (DS18B20). Added 2026-11-07, appended last |
+| `water_level` | boolean | — | `true` = water at the overflow sensor (reservoir overflowing). Added 2026-11-07, appended last |
 
 **Any column may be `null`** when that sensor is unimplemented, failed, or missing from the
 cycle. Treat `null` as "no reading", not as zero.

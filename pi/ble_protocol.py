@@ -14,11 +14,14 @@ from __future__ import annotations
 import datetime
 import json
 
-from config import BLE_STALE_AFTER_S, REMOTE_COLUMNS
+from config import BLE_STALE_AFTER_S, REMOTE_COLUMNS, remote_value
 
 # Column order is fixed and part of the contract: the app reads values positionally.
 # New columns go on the end so existing positions never move.
-COLUMNS = ["recorded_at", "ph", "ec", "temperature_c", "humidity", "light_intensity", "co2", "water_temp"]
+COLUMNS = [
+    "recorded_at", "ph", "ec", "temperature_c", "humidity", "light_intensity", "co2", "water_temp",
+    "water_level",
+]
 
 # A conservative ceiling for one notification at the negotiated 517-byte MTU. Messages are far
 # smaller than this in practice; exceeding it means the contract needs chunking, so it is
@@ -36,7 +39,7 @@ def snapshot(row) -> dict:
     record["recorded_at"] = _iso(row["ts"])
     for local, remote in REMOTE_COLUMNS.items():
         if remote in record:
-            record[remote] = row[local]
+            record[remote] = remote_value(local, row[local])
     return record
 
 

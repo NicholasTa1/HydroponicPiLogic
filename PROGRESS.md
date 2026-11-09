@@ -540,3 +540,20 @@ then `test_ph_sync.py` for a real end-to-end reading.
   under the 500-byte notification limit. Not yet run on the Pi.
 - The app repo keeps its own copy of `ble-protocol.md`; it needs the same update.
 
+### Water level now leaves the Pi (for in-app overflow alerts)
+- **`water_level` syncs to Supabase and is sent over BLE**, so the app can warn about an
+  overflow. Mapped in `REMOTE_COLUMNS`; BLE `COLUMNS` gained it as the last column (9 now).
+- **Sent as true/false, not 0.0/1.0.** SQLite stores every sensor as REAL, so the new
+  `config.BOOLEAN_COLUMNS` and `remote_value()` convert it on the way out. Both `sync.py` and
+  `ble_protocol.snapshot()` use the same helper, so the two paths can't disagree.
+- **Meaning:** `true` = water has reached the SEN0204, which is mounted at the overflow height.
+  Still unverified on the bench (the sensor is "not yet tested" above), including whether this
+  module's output is inverted. Check by hand before trusting an alert.
+- **Supabase needs the column first.** `supabase_schema.sql` has the one-line
+  `alter table ... add column water_level boolean`; until it is run, every sync insert fails
+  because the payload carries a column the table doesn't have.
+- This is the in-app-only version: the app shows the alert while it is open. No debounce or
+  pump cut-off on the Pi yet, and no push notifications — both still open.
+- Checked off-Pi with a stubbed `dotenv`/`supabase`: 1.0 → `true`, 0.0 → `false`, missing →
+  `null`, identically in the sync record and the BLE row.
+
