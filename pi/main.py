@@ -6,6 +6,8 @@ drives control or syncs. Dosing is still to come. Outlier/glitch detection over 
 history remains off-Pi.
 """
 
+from __future__ import annotations
+
 import time
 
 import db

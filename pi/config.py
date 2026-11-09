@@ -1,5 +1,7 @@
 """Central config for the Pi control subsystem. Tune values here, not in the modules."""
 
+from __future__ import annotations
+
 import os
 
 from dotenv import load_dotenv
@@ -53,7 +55,21 @@ PH_SLOPE = 3.5
 PH_INTERCEPT = 0.0
 PH_SAMPLES_PER_READ = 5     # median of N ADC reads; raw analog pH output is noisy
 
-# --- EC probe (SenseCAP S-EC-01, analog 0-2V output) ---
+# --- EC (Bluelab Guardian via the Edenic cloud API) ---
+# Replaces the analog SenseCAP probe. The API key is a secret and lives in .env, never here.
+# Note Edenic API keys expire after one year — EC will silently start faulting when it does.
+EDENIC_API_BASE_URL = "https://api.edenic.io/api/v1"
+EDENIC_API_KEY = os.environ.get("EDENIC_API_KEY", "")
+EDENIC_ORGANIZATION_ID = os.environ.get("EDENIC_ORGANIZATION_ID", "")
+EDENIC_DEVICE_ID = os.environ.get("EDENIC_DEVICE_ID", "")
+# Edenic rate-limits to about one request per minute, while the loop samples every 30s, so
+# responses are cached for this long and served from cache in between.
+EDENIC_MIN_POLL_S = 60
+EDENIC_REQUEST_TIMEOUT_S = 10
+EDENIC_EC_KEY = "electrical_conductivity"   # already mS/cm, matching our unit
+
+# --- EC probe (SenseCAP S-EC-01, analog) — superseded by the Guardian above, kept in case
+# the analog path is revived. Nothing reads these while ECSensor uses Edenic. ---
 EC_ADC_CHANNEL = 1          # A1
 
 # The volts -> uS/cm multiplier depends on which output range the unit was ordered with, and

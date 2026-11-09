@@ -74,11 +74,11 @@ claims, and the dated entries below cannot be read at a glance.
 
 | Sensor | Part | Status as of 2026-10-16 |
 |---|---|---|
-| ADC | ADS1115 | **Tabled, unresolved** — see 2026-10-26. Power supply is the current suspicion |
+| ADC | ADS1115 | **Working** — was never damaged; the fault was the analog ground reference |
 | pH | DFRobot SEN0161/9 | **Blocked** — read correctly once, now blocked on the ADC |
 | Light | VEML7700 | **Working** — initial failure was wiring |
-| EC | SenseCAP S-EC-01 | **Not yet tested** — cable has no exposed conductors to connect to |
-| Water level | DFRobot SEN0204 | **Not yet tested** — blocked on building the divider |
+| EC | Bluelab Guardian (Edenic API) | **Code ready, needs credentials** — replaced the SenseCAP |
+| Water level | DFRobot SEN0204 | **Working** — 12k/22k divider, and a shared ground |
 | Water temp | DS18B20 | **Working** — needed 1-Wire enabling via raspi-config + reboot |
 | CO2 / air temp / humidity | SCD41 | **Blocked** — first unit dead on arrival, awaiting replacement |
 | BLE transfer | — | **Working** — verified end to end with nRF Connect |
@@ -89,6 +89,54 @@ not on software faults. Nobody should go looking for bugs in their drivers until
 been connected and produced at least one value.
 
 pH and EC both depend on the ADS1115, so while that is damaged neither can be tested.
+
+## 2026-11-09
+- **EC moved from the analog SenseCAP probe to a Bluelab Guardian read over the Edenic cloud
+  API.** The SenseCAP was never testable (its cable had no exposed conductors). Edenic already
+  reports mS/cm, so no conversion is needed, and the Guardian does its own temperature
+  compensation.
+- Edenic publishes no official API documentation. Endpoints, auth and response shape were taken
+  from the Home Assistant integration at github.com/plumbobdev/homeassistant-edenic:
+  `GET {base}/telemetry/{device_id}` and `GET {base}/device/{org_id}`, base
+  `https://api.edenic.io/api/v1`, with the raw API key in an `Authorization` header and values
+  returned as strings in a newest-first list. Treat all of that as unofficial.
+- **Rate limit vs sample rate:** Edenic allows roughly one request per minute while the control
+  loop samples every 30s, so telemetry is cached for `EDENIC_MIN_POLL_S` and served from cache
+  in between. Verified this holds to exactly one call per minute under a 30s loop. HTTP 400 is
+  Edenic's rate-limit response and is surfaced with that explanation rather than as a generic
+  error.
+- **This puts the internet in the control path for EC, contrary to spec §3** ("the network is
+  never in the control path"). Dosing decisions that depend on EC will stop working during an
+  outage. A failed fetch raises, so the loop records a fault and leaves EC NULL — it degrades
+  to "no reading" rather than acting on a stale one, which is the safe direction. Worth
+  revisiting if dosing is automated: the Guardian has a local display, but no local API.
+- **API keys expire after one year.** EC will start faulting with no other warning when it does.
+- Credentials (`EDENIC_API_KEY`, `EDENIC_ORGANIZATION_ID`, `EDENIC_DEVICE_ID`) live in `.env`,
+  never in config.py. Added `list_edenic_devices.py` to find the device id.
+- Old analog EC constants are kept in config.py but unused, in case that path is revived.
+
+## Reference: grounding
+
+**Three separate sensor faults on this project have turned out to be grounding.** Before
+debugging anything else on a new sensor, confirm its ground is physically tied to the Pi's.
+
+A voltage only means anything relative to a reference. A sensor on its own supply — however
+clean and reliable that supply is — produces readings the Pi cannot interpret unless the two
+share a ground. The symptoms look like everything except what they are:
+
+| Sensor | Looked like | Actually was |
+|---|---|---|
+| SCD41 | Dead device, absent from `i2cdetect` | External 5V supply ground not tied to Pi |
+| ADS1115 | Damaged chip: config read back fine, all channels garbage | Analog ground reference, same cause. Chip was fine |
+| SEN0204 | Marginal logic level, random HIGH/LOW with a correct LED | External supply ground not tied to Pi |
+
+The tell for the water level sensor was **random** switching rather than a regular pattern.
+A marginal voltage gives something rhythmic or noise-correlated; a floating reference gives
+randomness. Worth remembering, because the divider maths looked right the whole time and the
+sensor's own LED was correct throughout — everything pointed away from the real cause.
+
+A useful test needing no multimeter: jumper the GPIO straight to 3.3V, then to GND. Both
+should read rock solid. If they do, the Pi input is fine and the fault is in the signal path.
 
 ## Reference: running on the Pi
 
