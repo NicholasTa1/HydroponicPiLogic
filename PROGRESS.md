@@ -557,3 +557,22 @@ then `test_ph_sync.py` for a real end-to-end reading.
 - Checked off-Pi with a stubbed `dotenv`/`supabase`: 1.0 → `true`, 0.0 → `false`, missing →
   `null`, identically in the sync record and the BLE row.
 
+
+## 2026-11-09
+- **Checked what sync sends against the live `sensor_readings` table.** The table has `id`,
+  `recorded_at`, `ph`, `ec`, `water_temp`, `temperature_c`, `humidity`, `light_intensity`, `co2`,
+  `username`, `water_level`. Every column sync sends exists there. The one gap was `username`:
+  nothing filled it, and the app shows a signed-in user only rows tagged with their username, so
+  every row the Pi uploaded was invisible in the app.
+- **Sync now tags every row with a placeholder username**, `config.SUPABASE_USERNAME`, default
+  `admin` (the app's test login), overridable via `SUPABASE_USERNAME` in `.env`. It is a
+  placeholder until the app moves to Supabase Auth; it is not sensor data.
+- Sensors with no reading still sync as `null`. Nothing is faked into the dataset.
+- The 40 rows currently in the table (ids 92-131) are seeded test data, all `admin`; earlier Pi
+  test rows (ids 12-16) are gone.
+- Checked off-Pi with a stubbed `supabase`: the record's keys match the table's columns
+  exactly (`id` excepted), and an all-empty cycle is still skipped. Not yet run against Supabase.
+- **The level sensor has moved to the low-water mark** (the app now alerts on low water, not
+  overflow). `true` still means water at the sensor, so nothing changes on the Pi, but the
+  "overflow height" wording in `config.py`, `docs/ble-protocol.md` and the entry above is out of
+  date. Rows uploaded while it sat at the overflow height read `false` and now look like low water.

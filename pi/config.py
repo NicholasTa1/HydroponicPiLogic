@@ -143,7 +143,14 @@ BLE_STALE_AFTER_S = 180     # readings older than this mean the sensor loop has 
 # Never hardcode these. Set them in a local .env (see .env.example) or the Pi's environment.
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
-# Existing remote table (predates this code) is a wide row per snapshot: id, humidity,
-# temperature_c, light_intensity, ec, ph, recorded_at — no basin_id yet. Fine for pH-only now;
-# will need a basin_id column (or a rethink) once other basins/sensors start syncing.
+# Remote table: one wide row per snapshot. Columns as of 2026-11-09: id (auto), recorded_at,
+# ph, ec, water_temp, temperature_c, humidity, light_intensity, co2, username, water_level.
+# Every column except id and username comes from REMOTE_COLUMNS. No basin_id yet, so a second
+# basin cannot be told apart remotely.
 SUPABASE_READINGS_TABLE = "sensor_readings"
+
+# Placeholder for the remote `username` column, which no sensor provides. The app shows a
+# signed-in user only the rows tagged with their username, so untagged rows never appear. There
+# are no real accounts yet: every row is tagged with this test user until the app moves to
+# Supabase Auth. Override with SUPABASE_USERNAME in .env.
+SUPABASE_USERNAME = os.environ.get("SUPABASE_USERNAME", "admin")
