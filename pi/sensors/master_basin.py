@@ -1,17 +1,17 @@
 """Sensors that exist once, on the shared reservoir: EC, pH, water level.
 
-EC and pH are both analog boards read through the shared ADS1115. Water level hardware is
-still TBD (load cell vs ultrasonic) — read() is a stub until that part is picked.
+pH is an analog board on the shared ADS1115, water level is a GPIO input, and EC comes from a
+Bluelab Guardian over the Edenic cloud API rather than from the Pi's own hardware.
 """
 
 import statistics
 
 from sensors.ads1115 import get_shared_adc
 from sensors.base import Sensor, Reading
+from sensors.edenic import EdenicTelemetry
 from config import (
-    EC_ADC_CHANNEL,
-    EC_SAMPLES_PER_READ,
-    EC_VOLTS_TO_US_CM,
+    EDENIC_DEVICE_ID,
+    EDENIC_EC_KEY,
     MASTER_BASIN,
     PH_ADC_CHANNEL,
     PH_INTERCEPT,
@@ -22,25 +22,35 @@ from config import (
 
 
 class ECSensor(Sensor):
-    """SenseCAP S-EC-01 in analog mode, read through an ADS1115 channel.
+    """Bluelab Guardian EC, fetched from the Edenic cloud API rather than wired to the Pi.
 
-    Reported in mS/cm to match the spec's setpoint table and the remote `ec` column, while the
-    datasheet's conversion works in uS/cm. Temperature compensation happens inside the sensor,
-    so there is nothing to correct for here.
+    Edenic already reports mS/cm, which is what spec §5's setpoints and the remote `ec` column
+    use, so no conversion is needed. The Guardian does its own temperature compensation.
+
+    This is the one sensor whose reading depends on the internet; see sensors/edenic.py for
+    why that matters and how a failed fetch is handled.
     """
 
     name = "ec"
     unit = "mS/cm"
 
-    def __init__(self, channel: int = EC_ADC_CHANNEL):
+    def __init__(self, device_id: str = EDENIC_DEVICE_ID):
         super().__init__(MASTER_BASIN)
-        self.channel = channel
+        self.device_id = device_id
+        self._telemetry = None
+
+    def _get_telemetry(self):
+        # Built on first read so constructing the sensor makes no network call.
+        if self._telemetry is None:
+            if not self.device_id:
+                raise RuntimeError(
+                    "EDENIC_DEVICE_ID not set — run list_edenic_devices.py and add it to .env"
+                )
+            self._telemetry = EdenicTelemetry(self.device_id)
+        return self._telemetry
 
     def read(self) -> Reading:
-        adc = get_shared_adc()
-        samples = [adc.read_voltage(self.channel) for _ in range(EC_SAMPLES_PER_READ)]
-        volts = statistics.median(samples)
-        value = EC_VOLTS_TO_US_CM * volts / 1000.0
+        value = self._get_telemetry().value(EDENIC_EC_KEY)
         return Reading(basin_id=self.basin_id, sensor=self.name, value=value, unit=self.unit)
 
 

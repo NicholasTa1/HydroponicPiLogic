@@ -77,7 +77,7 @@ claims, and the dated entries below cannot be read at a glance.
 | ADC | ADS1115 | **Working** — was never damaged; the fault was the analog ground reference |
 | pH | DFRobot SEN0161/9 | **Blocked** — read correctly once, now blocked on the ADC |
 | Light | VEML7700 | **Working** — initial failure was wiring |
-| EC | SenseCAP S-EC-01 | **Not yet tested** — cable has no exposed conductors to connect to |
+| EC | Bluelab Guardian (Edenic API) | **Code ready, needs credentials** — replaced the SenseCAP |
 | Water level | DFRobot SEN0204 | **Working** — 12k/22k divider, and a shared ground |
 | Water temp | DS18B20 | **Working** — needed 1-Wire enabling via raspi-config + reboot |
 | CO2 / air temp / humidity | SCD41 | **Blocked** — first unit dead on arrival, awaiting replacement |
@@ -89,6 +89,31 @@ not on software faults. Nobody should go looking for bugs in their drivers until
 been connected and produced at least one value.
 
 pH and EC both depend on the ADS1115, so while that is damaged neither can be tested.
+
+## 2026-11-09
+- **EC moved from the analog SenseCAP probe to a Bluelab Guardian read over the Edenic cloud
+  API.** The SenseCAP was never testable (its cable had no exposed conductors). Edenic already
+  reports mS/cm, so no conversion is needed, and the Guardian does its own temperature
+  compensation.
+- Edenic publishes no official API documentation. Endpoints, auth and response shape were taken
+  from the Home Assistant integration at github.com/plumbobdev/homeassistant-edenic:
+  `GET {base}/telemetry/{device_id}` and `GET {base}/device/{org_id}`, base
+  `https://api.edenic.io/api/v1`, with the raw API key in an `Authorization` header and values
+  returned as strings in a newest-first list. Treat all of that as unofficial.
+- **Rate limit vs sample rate:** Edenic allows roughly one request per minute while the control
+  loop samples every 30s, so telemetry is cached for `EDENIC_MIN_POLL_S` and served from cache
+  in between. Verified this holds to exactly one call per minute under a 30s loop. HTTP 400 is
+  Edenic's rate-limit response and is surfaced with that explanation rather than as a generic
+  error.
+- **This puts the internet in the control path for EC, contrary to spec §3** ("the network is
+  never in the control path"). Dosing decisions that depend on EC will stop working during an
+  outage. A failed fetch raises, so the loop records a fault and leaves EC NULL — it degrades
+  to "no reading" rather than acting on a stale one, which is the safe direction. Worth
+  revisiting if dosing is automated: the Guardian has a local display, but no local API.
+- **API keys expire after one year.** EC will start faulting with no other warning when it does.
+- Credentials (`EDENIC_API_KEY`, `EDENIC_ORGANIZATION_ID`, `EDENIC_DEVICE_ID`) live in `.env`,
+  never in config.py. Added `list_edenic_devices.py` to find the device id.
+- Old analog EC constants are kept in config.py but unused, in case that path is revived.
 
 ## Reference: grounding
 
