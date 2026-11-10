@@ -624,3 +624,24 @@ then `test_ph_sync.py` for a real end-to-end reading.
   overflow). `true` still means water at the sensor, so nothing changes on the Pi, but the
   "overflow height" wording in `config.py`, `docs/ble-protocol.md` and the entry above is out of
   date. Rows uploaded while it sat at the overflow height read `false` and now look like low water.
+
+## 2026-11-09 (later)
+- **Cause of the "445.0 is not a valid value" sync error:** the `sensor_readings` table was
+  recreated by a CSV import, which inferred `co2` as `bigint` from the CSV's whole-number values.
+  The Pi stores every reading as REAL and sent `445.0`; Postgres rejects that for a bigint
+  (`invalid input syntax for type bigint: "445.0"`), and because a batch is one insert, the
+  whole batch failed, not just CO2. Every other numeric column still accepts decimals.
+- **Fix:** new `config.INTEGER_COLUMNS = {"co2"}`; `remote_value()` sends those as ints, for
+  both Supabase and BLE. The SCD41 only reports whole ppm, so nothing is lost. Alternatively
+  the column can go back to decimals with
+  `alter table sensor_readings alter column co2 type double precision;`; either works.
+- **`system_name` now sent on every row**, from `config.SYSTEM_NAME` (`HYDRO_SYSTEM_NAME` in
+  `.env`, default "Tower A"). The app now builds one system per distinct `system_name`; untagged
+  rows land under "Unassigned". Also appended as the last BLE column, so Bluetooth rows are filed
+  under the right system too. Each Pi needs its own name.
+- Updated `docs/ble-protocol.md` (new column, co2 as integer, `water_level` now means water at
+  the low-water mark). The app repo's copy of `ble-protocol.md` is out of date; the app maps BLE
+  columns by name, so it needs no code change.
+- Checked off-Pi with a stubbed `supabase`: the record's keys match the live table's columns
+  exactly, co2 serializes as `445`, BLE rows have 10 values and stay under 160 bytes. Not yet
+  run on the Pi or against Supabase.

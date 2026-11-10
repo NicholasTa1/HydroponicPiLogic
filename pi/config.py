@@ -134,16 +134,26 @@ REMOTE_COLUMNS = {
 }
 
 # Local columns that hold a boolean as 0.0/1.0 (SQLite stores every sensor as REAL) and must
-# leave the Pi as true/false. `water_level` is the SEN0204 at the overflow height: true means
-# water has reached the sensor, i.e. the reservoir is overflowing.
+# leave the Pi as true/false. `water_level` is the SEN0204, now mounted at the low-water mark:
+# true means water is at the sensor (normal), false means the level has dropped below it.
 BOOLEAN_COLUMNS = {"water_level"}
+
+# Local columns sent as whole numbers. The remote `co2` column is bigint (the CSV import that
+# recreated the table inferred it from whole-number values), and Postgres rejects "445.0" for a
+# bigint, failing the whole batch. The SCD41 only reports whole ppm, so nothing is lost.
+INTEGER_COLUMNS = {"co2"}
 
 
 def remote_value(local: str, value):
-    """A local value as it should appear remotely (Supabase and BLE): booleans as true/false."""
-    if value is None or local not in BOOLEAN_COLUMNS:
-        return value
-    return value >= 0.5
+    """A local value as it should appear remotely (Supabase and BLE): booleans as true/false,
+    whole-number columns as ints."""
+    if value is None:
+        return None
+    if local in BOOLEAN_COLUMNS:
+        return value >= 0.5
+    if local in INTEGER_COLUMNS:
+        return int(round(value))
+    return value
 
 # --- BLE ---
 # Fixed UUIDs. The app hard-codes these same values; see docs/ble-protocol.md.
@@ -159,11 +169,16 @@ BLE_STALE_AFTER_S = 180     # readings older than this mean the sensor loop has 
 # Never hardcode these. Set them in a local .env (see .env.example) or the Pi's environment.
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
-# Remote table: one wide row per snapshot. Columns as of 2026-11-09: id (auto), recorded_at,
-# ph, ec, water_temp, temperature_c, humidity, light_intensity, co2, username, water_level.
-# Every column except id and username comes from REMOTE_COLUMNS. No basin_id yet, so a second
-# basin cannot be told apart remotely.
+# Remote table: one wide row per snapshot. Columns as of 2026-11-09 (after a CSV import
+# recreated it): id, recorded_at, ph, ec, water_temp, temperature_c, humidity, light_intensity,
+# co2 (bigint), username, water_level, system_name. Sensor columns come from REMOTE_COLUMNS;
+# username and system_name are filled from the settings below; id is left to the database.
 SUPABASE_READINGS_TABLE = "sensor_readings"
+
+# Which growing system this Pi belongs to, written to `system_name` on every row (Supabase and
+# BLE). The app builds one system per distinct name, so each Pi needs its own. Must match the
+# name the app shows, e.g. "Tower A". Override with HYDRO_SYSTEM_NAME in .env.
+SYSTEM_NAME = os.environ.get("HYDRO_SYSTEM_NAME", "Tower A")
 
 # Placeholder for the remote `username` column, which no sensor provides. The app shows a
 # signed-in user only the rows tagged with their username, so untagged rows never appear. There
