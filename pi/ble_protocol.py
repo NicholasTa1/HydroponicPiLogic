@@ -11,17 +11,25 @@ See docs/ble-protocol.md for the contract the app implements against.
 
 from __future__ import annotations
 
-import datetime
 import json
 
-from config import BLE_STALE_AFTER_S, REMOTE_COLUMNS, SYSTEM_NAME, remote_value
+from config import BLE_STALE_AFTER_S, REMOTE_RECORD_COLUMNS, remote_record
 
 # Column order is fixed and part of the contract: the app reads values positionally.
 # New columns go on the end so existing positions never move.
 COLUMNS = [
     "recorded_at", "ph", "ec", "temperature_c", "humidity", "light_intensity", "co2", "water_temp",
-    "water_level", "system_name",
+    "water_level", "system_name", "username",
 ]
+
+# BLE sends exactly what Supabase sync sends. A column added to the sync record must be appended
+# above too; fail at startup rather than silently dropping it from the Bluetooth path.
+if set(COLUMNS) != set(REMOTE_RECORD_COLUMNS):
+    raise RuntimeError(
+        "ble_protocol.COLUMNS out of step with the sync record: "
+        f"missing {sorted(set(REMOTE_RECORD_COLUMNS) - set(COLUMNS))}, "
+        f"extra {sorted(set(COLUMNS) - set(REMOTE_RECORD_COLUMNS))}"
+    )
 
 # A conservative ceiling for one notification at the negotiated 517-byte MTU. Messages are far
 # smaller than this in practice; exceeding it means the contract needs chunking, so it is
@@ -29,19 +37,11 @@ COLUMNS = [
 MAX_MESSAGE_BYTES = 500
 
 
-def _iso(ts: float) -> str:
-    return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc).isoformat()
-
-
 def snapshot(row) -> dict:
-    """Turn one local cycle row into a record keyed by app column names."""
-    record = {column: None for column in COLUMNS}
-    record["recorded_at"] = _iso(row["ts"])
-    record["system_name"] = SYSTEM_NAME  # lets the app file the row under the right system
-    for local, remote in REMOTE_COLUMNS.items():
-        if remote in record:
-            record[remote] = remote_value(local, row[local])
-    return record
+    """Turn one local cycle row into a record keyed by app column names: the same record that
+    Supabase sync sends (config.remote_record), in COLUMNS order."""
+    record = remote_record(row)
+    return {column: record[column] for column in COLUMNS}
 
 
 def build_messages(rows, wanted: int, now: float) -> list[str]:

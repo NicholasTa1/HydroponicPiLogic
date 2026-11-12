@@ -646,3 +646,20 @@ then `test_ph_sync.py` for a real end-to-end reading.
   exactly, co2 serializes as `445`, BLE rows have 10 values and stay under 160 bytes. Not yet
   run on the Pi or against Supabase.
 - Updated the VEML7700 maximum value to 100k, since readings with the grow lights were over 30k.
+
+## 2026-11-11
+- **BLE now sends exactly the columns Supabase sync sends.** The only gap was `username`, now
+  appended as the last BLE column (11 columns), so existing positions don't move.
+- **One builder for both paths:** new `config.remote_record(row)` builds the remote record
+  (`recorded_at`, `username`, `system_name`, and every `REMOTE_COLUMNS` sensor value with
+  `remote_value()` applied). `sync._row_to_record()` and `ble_protocol.snapshot()` both use it,
+  replacing two hand-built copies that had drifted.
+- **Drift guard:** `config.REMOTE_RECORD_COLUMNS` lists the record's columns, and
+  `ble_protocol.py` raises at import if `COLUMNS` doesn't contain exactly those. A column added
+  to sync now fails loudly until it's also appended to the BLE contract, instead of being
+  silently dropped from Bluetooth.
+- The app needs no change: it maps BLE values by column name and ignores `username`. Its copy
+  of `ble-protocol.md` is still out of date.
+- Checked off-Pi with a stubbed `supabase`: a BLE row and a sync record for the same cycle
+  carry identical keys and values, an all-empty cycle is still skipped by sync, and the largest
+  BLE message stays well under 500 bytes. Not yet run on the Pi.
