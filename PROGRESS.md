@@ -663,3 +663,23 @@ then `test_ph_sync.py` for a real end-to-end reading.
 - Checked off-Pi with a stubbed `supabase`: a BLE row and a sync record for the same cycle
   carry identical keys and values, an all-empty cycle is still skipped by sync, and the largest
   BLE message stays well under 500 bytes. Not yet run on the Pi.
+
+## 2026-11-11 (later)
+- **Each Pi now names itself from its hardware.** Default `system_name` and Bluetooth advertised
+  name are both `HydroPi-<first 8 hex digits of SHA-256 of the hardware id>` (e.g.
+  `HydroPi-3f9a0c12`), replacing the "Tower A" default and `HydroPi-<hostname>`. One name for
+  both means the app can match a nearby Pi to its system.
+- **Hardware id:** the SoC serial from `/sys/firmware/devicetree/base/serial-number` (Pi 4 and
+  5), else `Serial` in `/proc/cpuinfo`. Unique per board and survives reflashing. Off-Pi fallbacks
+  for development: `/etc/machine-id` (changes on OS reinstall), then the MAC, then the hostname.
+  All-zero serials (some VMs) are skipped. `main.py` prints the name and its source at startup.
+- `HYDRO_SYSTEM_NAME` in `.env` still overrides the system name (not the BLE name). It is now
+  commented out in `.env.example`, so copying the example no longer pins every Pi to "Tower A".
+- **Deploy note:** a Pi whose `.env` sets `HYDRO_SYSTEM_NAME` keeps that name; remove the line to
+  switch to the hashed name. Rows already uploaded under "Tower A" stay under that name, so the
+  app will show the Pi as a new system from the switch onward.
+- 8 hex digits = 32 bits. Chance any two Pis share a name: ~1 in 1.4 billion for 3 Pis,
+  ~1 in 870,000 for 100, ~1 in 8,600 for 1,000. Lengthen DEVICE_HASH_LENGTH if the fleet ever
+  reaches thousands. The name identifies a Pi; it is not a secret (serials are guessable).
+- Checked off-Pi with faked id files: serial preferred over cpuinfo and machine-id, all-zero
+  serials skipped, same serial always gives the same name, override honoured. Not yet run on a Pi.

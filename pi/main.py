@@ -12,7 +12,15 @@ import time
 
 import db
 import sync
-from config import BASIN_IDS, SAMPLE_INTERVAL_S, SYNC_BATCH_LIMIT, SYNC_INTERVAL_S
+from config import (
+    BASIN_IDS,
+    DEVICE_ID_SOURCE,
+    DEVICE_NAME,
+    SAMPLE_INTERVAL_S,
+    SYNC_BATCH_LIMIT,
+    SYNC_INTERVAL_S,
+    SYSTEM_NAME,
+)
 from control import FanController
 from validity import ValidityTracker
 from sensors.environment import CO2Sensor, HumiditySensor, LightSensor, TemperatureSensor, WaterTempSensor
@@ -102,6 +110,7 @@ def sync_pending(conn):
 
 
 def main():
+    print(f"[startup] system_name={SYSTEM_NAME} (device {DEVICE_NAME}, id from {DEVICE_ID_SOURCE})")
     conn = db.connect()
     master_sensors, per_basin_sensors = build_sensors()
     fan_controllers = {basin_id: FanController(basin_id) for basin_id in BASIN_IDS}

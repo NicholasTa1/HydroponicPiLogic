@@ -14,17 +14,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import socket
 
 import ble_protocol as bp
 import db
 from config import (
     BLE_CONTROL_UUID,
     BLE_DATA_UUID,
-    BLE_DEVICE_PREFIX,
     BLE_MAX_ROWS,
     BLE_NOTIFY_GAP_S,
     BLE_SERVICE_UUID,
+    DEVICE_NAME,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -55,7 +54,9 @@ class HydroBLEServer:
         from bless import GATTCharacteristicProperties, GATTAttributePermissions
 
         self._loop = asyncio.get_running_loop()
-        name = f"{BLE_DEVICE_PREFIX}-{socket.gethostname()}"
+        # HydroPi-<hash of the Pi's serial>: unique per board, and the same as the default
+        # system_name, so the app can tell which system a nearby Pi is
+        name = DEVICE_NAME
         self._server = BlessServer(name=name)
         # bless requires BOTH callbacks. Without the read one it raises "read callback is
         # undefined" the moment anything reads a characteristic, including a central probing

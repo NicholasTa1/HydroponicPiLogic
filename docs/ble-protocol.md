@@ -10,7 +10,7 @@ Pi implementation: `pi/ble_protocol.py` (framing) and `pi/ble_server.py` (transp
 
 | What | Value |
 |---|---|
-| Advertised name | `HydroPi-<hostname>` |
+| Advertised name | `HydroPi-<first 8 hex digits of SHA-256 of the Pi's serial>`, e.g. `HydroPi-3f9a0c12` |
 | Service UUID | `6e3a1f80-5c21-4a7e-9d1b-2f8c4a0e7b31` |
 | CONTROL characteristic (write) | `6e3a1f81-5c21-4a7e-9d1b-2f8c4a0e7b31` |
 | DATA characteristic (notify) | `6e3a1f82-5c21-4a7e-9d1b-2f8c4a0e7b31` |
@@ -32,7 +32,7 @@ All messages are compact JSON, one per notification, each well under 500 bytes.
 
 ```json
 {"t":"hdr","cols":["recorded_at","ph","ec","temperature_c","humidity","light_intensity","co2","water_temp","water_level","system_name","username"],"n":10,"sensors_ok":true}
-{"t":"row","i":0,"v":["2026-10-09T08:54:20.250000+00:00",6.0,1.12,24.0,62.0,null,820,19.5,true,"Tower A","admin"]}
+{"t":"row","i":0,"v":["2026-10-09T08:54:20.250000+00:00",6.0,1.12,24.0,62.0,null,820,19.5,true,"HydroPi-3f9a0c12","admin"]}
 {"t":"end"}
 ```
 
@@ -54,7 +54,7 @@ All messages are compact JSON, one per notification, each well under 500 bytes.
 | `co2` | integer | ppm | Whole ppm; the Supabase column is bigint |
 | `water_temp` | number | °C | Reservoir water temperature (DS18B20). Added 2026-11-07, appended last |
 | `water_level` | boolean | — | `true` = water at the low-level sensor (normal), `false` = level too low. Added 2026-11-07; sensor moved from the overflow height to the low-water mark 2026-11-09 |
-| `system_name` | string | — | Which growing system this Pi is (`HYDRO_SYSTEM_NAME`, default "Tower A"); never `null`. Added 2026-11-09, appended last |
+| `system_name` | string | — | Which growing system this Pi is: by default the same as the advertised name (`HydroPi-…`), or `HYDRO_SYSTEM_NAME` if set; never `null`. Added 2026-11-09, appended last |
 | `username` | string | — | The app user the readings belong to (`SUPABASE_USERNAME`, default "admin"); never `null`. Added 2026-11-11, appended last |
 
 **Any sensor column may be `null`** when that sensor is unimplemented, failed, or missing from
