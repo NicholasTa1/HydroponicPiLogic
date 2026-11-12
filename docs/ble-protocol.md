@@ -31,8 +31,8 @@ Subscribe to DATA **before** writing to CONTROL, or the first notifications are 
 All messages are compact JSON, one per notification, each well under 500 bytes.
 
 ```json
-{"t":"hdr","cols":["recorded_at","ph","ec","temperature_c","humidity","light_intensity","co2","water_temp","water_level"],"n":10,"sensors_ok":true}
-{"t":"row","i":0,"v":["2026-10-09T08:54:20.250000+00:00",6.0,1.12,24.0,62.0,null,820.0,19.5,false]}
+{"t":"hdr","cols":["recorded_at","ph","ec","temperature_c","humidity","light_intensity","co2","water_temp","water_level","system_name"],"n":10,"sensors_ok":true}
+{"t":"row","i":0,"v":["2026-10-09T08:54:20.250000+00:00",6.0,1.12,24.0,62.0,null,820,19.5,true,"Tower A"]}
 {"t":"end"}
 ```
 
@@ -51,9 +51,10 @@ All messages are compact JSON, one per notification, each well under 500 bytes.
 | `temperature_c` | number | °C | Air temperature |
 | `humidity` | number | % RH | |
 | `light_intensity` | number | lux | Sensor not yet built — currently always `null` |
-| `co2` | number | ppm | |
+| `co2` | integer | ppm | Whole ppm; the Supabase column is bigint |
 | `water_temp` | number | °C | Reservoir water temperature (DS18B20). Added 2026-11-07, appended last |
-| `water_level` | boolean | — | `true` = water at the overflow sensor (reservoir overflowing). Added 2026-11-07, appended last |
+| `water_level` | boolean | — | `true` = water at the low-level sensor (normal), `false` = level too low. Added 2026-11-07; sensor moved from the overflow height to the low-water mark 2026-11-09 |
+| `system_name` | string | — | Which growing system this Pi is (`HYDRO_SYSTEM_NAME`, default "Tower A"); never `null`. Added 2026-11-09, appended last |
 
 **Any column may be `null`** when that sensor is unimplemented, failed, or missing from the
 cycle. Treat `null` as "no reading", not as zero.

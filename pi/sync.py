@@ -15,6 +15,7 @@ from config import (
     SUPABASE_READINGS_TABLE,
     SUPABASE_URL,
     SUPABASE_USERNAME,
+    SYSTEM_NAME,
     remote_value,
 )
 
@@ -43,8 +44,8 @@ def _row_to_record(row: sqlite3.Row) -> dict | None:
         return None
 
     recorded_at = datetime.datetime.fromtimestamp(row["ts"], tz=datetime.timezone.utc).isoformat()
-    # username is a placeholder, not sensor data (see config.SUPABASE_USERNAME)
-    return {"recorded_at": recorded_at, "username": SUPABASE_USERNAME, **values}
+    # username and system_name are settings, not sensor data (see config)
+    return {"recorded_at": recorded_at, "username": SUPABASE_USERNAME, "system_name": SYSTEM_NAME, **values}
 
 
 def send_batch(readings: list[sqlite3.Row]) -> bool:

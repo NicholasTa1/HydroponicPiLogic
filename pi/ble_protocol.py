@@ -14,13 +14,13 @@ from __future__ import annotations
 import datetime
 import json
 
-from config import BLE_STALE_AFTER_S, REMOTE_COLUMNS, remote_value
+from config import BLE_STALE_AFTER_S, REMOTE_COLUMNS, SYSTEM_NAME, remote_value
 
 # Column order is fixed and part of the contract: the app reads values positionally.
 # New columns go on the end so existing positions never move.
 COLUMNS = [
     "recorded_at", "ph", "ec", "temperature_c", "humidity", "light_intensity", "co2", "water_temp",
-    "water_level",
+    "water_level", "system_name",
 ]
 
 # A conservative ceiling for one notification at the negotiated 517-byte MTU. Messages are far
@@ -37,6 +37,7 @@ def snapshot(row) -> dict:
     """Turn one local cycle row into a record keyed by app column names."""
     record = {column: None for column in COLUMNS}
     record["recorded_at"] = _iso(row["ts"])
+    record["system_name"] = SYSTEM_NAME  # lets the app file the row under the right system
     for local, remote in REMOTE_COLUMNS.items():
         if remote in record:
             record[remote] = remote_value(local, row[local])

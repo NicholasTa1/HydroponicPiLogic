@@ -36,7 +36,7 @@ _CORRECTION_MIN_RAW = 100
 
 # The guide's own advice is to keep raw counts between 100 and 10000. Past the top of that the
 # correction is no longer trustworthy, so a reading there is refused rather than reported.
-_MAX_CHARACTERISED_RAW = 10000
+_MAX_CHARACTERISED_RAW = 100000
 
 
 def resolution(gain: float, integration_ms: int) -> float:
