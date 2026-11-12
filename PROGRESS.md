@@ -645,3 +645,4 @@ then `test_ph_sync.py` for a real end-to-end reading.
 - Checked off-Pi with a stubbed `supabase`: the record's keys match the live table's columns
   exactly, co2 serializes as `445`, BLE rows have 10 values and stay under 160 bytes. Not yet
   run on the Pi or against Supabase.
+- Updated the VEML7700 maximum value to 100k, since readings with the grow lights were over 30k.
