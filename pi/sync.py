@@ -4,7 +4,6 @@ synced locally (db.mark_synced) after this confirms the batch landed.
 
 from __future__ import annotations
 
-import datetime
 import sqlite3
 
 from supabase import Client, create_client
@@ -14,9 +13,7 @@ from config import (
     SUPABASE_KEY,
     SUPABASE_READINGS_TABLE,
     SUPABASE_URL,
-    SUPABASE_USERNAME,
-    SYSTEM_NAME,
-    remote_value,
+    remote_record,
 )
 
 _client: Client | None = None
@@ -39,13 +36,10 @@ def _row_to_record(row: sqlite3.Row) -> dict | None:
     Values that failed their validity checks are already NULL locally, so known-bad numbers
     never reach the dashboard. Returns None when the row has nothing to send.
     """
-    values = {remote: remote_value(local, row[local]) for local, remote in REMOTE_COLUMNS.items()}
-    if all(value is None for value in values.values()):
+    record = remote_record(row)  # the same record BLE sends (see config.remote_record)
+    if all(record[remote] is None for remote in REMOTE_COLUMNS.values()):
         return None
-
-    recorded_at = datetime.datetime.fromtimestamp(row["ts"], tz=datetime.timezone.utc).isoformat()
-    # username and system_name are settings, not sensor data (see config)
-    return {"recorded_at": recorded_at, "username": SUPABASE_USERNAME, "system_name": SYSTEM_NAME, **values}
+    return record
 
 
 def send_batch(readings: list[sqlite3.Row]) -> bool:
