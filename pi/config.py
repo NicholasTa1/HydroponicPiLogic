@@ -175,10 +175,74 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 # username and system_name are filled from the settings below; id is left to the database.
 SUPABASE_READINGS_TABLE = "sensor_readings"
 
+# --- Device identity ---
+# Each Pi names itself HydroPi-<first 8 hex digits of SHA-256 of its hardware id>, e.g.
+# HydroPi-3f9a0c12. The id is the SoC serial number burned in at the factory, so the name is
+# unique per board, needs no setup, and survives reflashing the SD card. It identifies the Pi;
+# it is not a secret (Pi serials are guessable, so the hash can be reversed by brute force).
+DEVICE_HASH_LENGTH = 8
+
+# Places a stable unique id can come from, most preferred first. The Pi's serial is in the
+# device tree on Pi 4 and Pi 5; /proc/cpuinfo carries the same value on most kernels.
+_SERIAL_PATHS = ("/sys/firmware/devicetree/base/serial-number", "/proc/device-tree/serial-number")
+
+
+def _read_text(path: str) -> str:
+    try:
+        with open(path, encoding="ascii", errors="ignore") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def _usable(value: str) -> bool:
+    """Empty or all-zero ids (some VMs and boards report 0000...) cannot tell devices apart."""
+    return bool(value) and value.strip("0") != ""
+
+
+def hardware_id() -> tuple[str, str]:
+    """(source, value) of the most stable unique id available on this machine.
+
+    On a Pi this is the SoC serial. The fallbacks exist so the code still runs on a laptop or
+    another Linux box during development: /etc/machine-id (changes if the OS is reinstalled),
+    then the MAC address, then the hostname (neither guaranteed unique or stable).
+    """
+    for path in _SERIAL_PATHS:
+        serial = _read_text(path).strip("\x00 \n\t").lower()
+        if _usable(serial):
+            return path, serial
+    for line in _read_text("/proc/cpuinfo").splitlines():
+        if line.lower().startswith("serial"):
+            serial = line.split(":", 1)[1].strip().lower()
+            if _usable(serial):
+                return "/proc/cpuinfo", serial
+    machine_id = _read_text("/etc/machine-id").strip().lower()
+    if _usable(machine_id):
+        return "/etc/machine-id", machine_id
+    import uuid
+
+    node = uuid.getnode()
+    if not (node >> 40) & 1:  # this bit set means uuid invented a random value, not a real MAC
+        return "mac", f"{node:012x}"
+    import socket
+
+    return "hostname", socket.gethostname()
+
+
+def device_name(hw_id: str) -> str:
+    """HydroPi-<first DEVICE_HASH_LENGTH hex digits of SHA-256(hw_id)>."""
+    import hashlib
+
+    return f"{BLE_DEVICE_PREFIX}-{hashlib.sha256(hw_id.encode()).hexdigest()[:DEVICE_HASH_LENGTH]}"
+
+
+DEVICE_ID_SOURCE, _DEVICE_ID = hardware_id()
+DEVICE_NAME = device_name(_DEVICE_ID)  # also the Bluetooth advertised name
+
 # Which growing system this Pi belongs to, written to `system_name` on every row (Supabase and
-# BLE). The app builds one system per distinct name, so each Pi needs its own. Must match the
-# name the app shows, e.g. "Tower A". Override with HYDRO_SYSTEM_NAME in .env.
-SYSTEM_NAME = os.environ.get("HYDRO_SYSTEM_NAME", "Tower A")
+# BLE). The app builds one system per distinct name, so each Pi needs its own: by default its
+# DEVICE_NAME. Set HYDRO_SYSTEM_NAME in .env for a friendly name such as "Tower A" instead.
+SYSTEM_NAME = os.environ.get("HYDRO_SYSTEM_NAME") or DEVICE_NAME
 
 # Placeholder for the remote `username` column, which no sensor provides. The app shows a
 # signed-in user only the rows tagged with their username, so untagged rows never appear. There

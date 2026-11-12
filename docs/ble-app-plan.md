@@ -16,7 +16,7 @@ below, so the plan stands alone until then.
 
 | | |
 |---|---|
-| Advertised name | `HydroPi-<hostname>`, e.g. `HydroPi-homegrow` |
+| Advertised name | `HydroPi-<first 8 hex digits of SHA-256 of the Pi's serial>`, e.g. `HydroPi-3f9a0c12` (was `HydroPi-<hostname>` until 2026-11-11) |
 | Service UUID | `6e3a1f80-5c21-4a7e-9d1b-2f8c4a0e7b31` |
 | CONTROL characteristic | `6e3a1f81-5c21-4a7e-9d1b-2f8c4a0e7b31` — WRITE, WRITE NO RESPONSE |
 | DATA characteristic | `6e3a1f82-5c21-4a7e-9d1b-2f8c4a0e7b31` — NOTIFY, READ |
