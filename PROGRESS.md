@@ -846,3 +846,23 @@ little power and noise.
   10 min, and returns to normal control when a trusted reading comes back. **Not yet run on a
   Pi, and no fan has been wired** -- the thresholds and the relay polarity are both unverified
   against real hardware.
+
+## 2026-11-15 (fan thresholds)
+- **`FAN_ON_TEMP_F` raised 72 -> 74 F; `FAN_OFF_TEMP_F` stays at 69 F**, so the hysteresis band
+  is now 5 F. Asked for directly: less eager to start the fan, same point to stop it.
+- 74 F still sits under the ~75 F where lettuce bolts, tipburns and turns bitter, which is the
+  failure that ends a crop rather than merely slowing it. Raising ON further would mean cooling
+  only after the crop is already in that range.
+- **What the wider band changes:** once tripped, the fan now runs from 74 F down to 69 F
+  instead of 72 F down to 69 F, so expect fewer, longer runs rather than more frequent short
+  ones. That is the right trade for a fan (cycling is cheap, there is no compressor to protect).
+- **What it does not change:** the fan exhausts to room air, so it cannot pull the chamber far
+  below ambient. In a room at or above ~69 F the OFF threshold is unreachable and the fan will
+  latch on and stay on, exactly as the old 58 F did, just less obviously. Which regime this
+  system is in is an empirical question and nobody has the data yet -- the SCD41 that provides
+  `temperature` has been DOA since 2026-10, so the fan loop has never seen a real reading.
+- **Tune from the log, not from guesses.** `temperature_c` is already synced every 30s; a day
+  or two of it under the grow lights will show whether the chamber ever reaches 69 F at all. If
+  it does not, the answer is not a different threshold but less heat input or a cooler room.
+- Checked off-Pi: fan trips on above 74 F, holds through 73/71/69.5 on the way down, releases
+  below 69 F. Still not run on a Pi, and still no fan wired.

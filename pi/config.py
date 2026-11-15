@@ -39,15 +39,17 @@ STUCK_VALUE_DECIMALS = 4    # spec §4: "identical value to 4 dp"
 
 # --- Fan feedback loop (bang-bang, per basin) ---
 # Lettuce wants 60-70 F air and starts bolting, tipburning and turning bitter above ~75 F, so
-# 72 F is a deliberately conservative "too warm".
+# ON stays just under that: 74 F leaves a little margin before the crop is in the range that
+# ends it, while not chasing the fan for every degree.
 #
-# The OFF threshold was 58 F, which could not work: the fan exhausts to room air, so the
-# chamber can never get far below ambient, and a 58 F target in a ~70 F room means the fan
-# latches on at the first warm moment and never switches off again. 69 F is reachable in a
-# normal room and still leaves a 3 F band, which is plenty to stop a fan chattering at a
-# threshold sampled every 30s. Raise ON before lowering OFF if the fan runs too much; the two
-# must not cross.
-FAN_ON_TEMP_F = 72.0
+# OFF is the threshold with the real constraint. The fan exhausts to room air, so the chamber
+# cannot get far below ambient: an OFF target below room temperature is simply unreachable and
+# the fan latches on at the first warm moment and never switches off. (It was 58 F, which
+# could never have worked.) 69 F is reachable in a cool room but is close to ambient in many,
+# so expect long single runs rather than short cycles -- that is the trade for a 5 F band, and
+# the logged temperature_c will show which is actually happening. Raise ON before lowering
+# OFF if the fan runs too much; the two must never cross.
+FAN_ON_TEMP_F = 74.0
 FAN_OFF_TEMP_F = 69.0
 
 # BCM pin per basin that switches that basin's fan. Taken: 11, 17, 19 (and 2/3 for I2C, 4 for
