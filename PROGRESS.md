@@ -150,7 +150,7 @@ ls /sys/bus/w1/devices/            # expect a 28-* entry for the DS18B20
 
 python3 read_adc.py                # live ADC voltages (pH/EC), Ctrl-C to stop
 python3 read_sensors.py            # every sensor, converted values -- the main bring-up tool
-python3 calibrate_ph.py            # needs pH 4.00 + 9.18 buffer solutions
+python3 calibrate_ph.py            # needs two buffers, e.g. pH 4.00 + 7.00
 python3 test_ph_sync.py            # one reading end to end into Supabase
 python3 seed_dummy_data.py         # 10 fake cycles, for testing BLE without sensors
 python3 ble_server.py              # BLE peripheral; pair with nRF Connect
@@ -683,3 +683,38 @@ then `test_ph_sync.py` for a real end-to-end reading.
   reaches thousands. The name identifies a Pi; it is not a secret (serials are guessable).
 - Checked off-Pi with faked id files: serial preferred over cpuinfo and machine-id, all-zero
   serials skipped, same serial always gives the same name, override honoured. Not yet run on a Pi.
+
+## 2026-11-15
+- **`calibrate_ph.py` now rejects an implausible slope instead of printing it.** The previous
+  run produced `PH_SLOPE = 25.7373` / `PH_INTERCEPT = -18.0681` from pH 4 at 0.857 V and pH 7
+  at 0.974 V: a span of 0.117 V over 3 pH units, or **39 mV/pH against this board's nominal
+  286** — 14% of a healthy electrode. The only acceptance test was "the two buffers differ by
+  more than 0.01 V", which 0.117 V passes easily, so the script printed constants that look
+  like a calibration and would have turned every later pH reading into noise.
+- The gate is on the fitted slope, not on absolute voltage, so it holds for any buffer pair:
+  outside **2.0-6.0 pH/V** (generous either side of the nominal 3.5) the script explains the
+  failure and returns without printing, unless the operator types `force`. It also now reports
+  mV/pH and the percentage of nominal on every run, pass or fail, since that single number is
+  what distinguishes a tired electrode from a wiring fault.
+- Also noted in the rejection message that **the offset potentiometer cannot fix a compressed
+  span** — it shifts the curve, not its slope. Worth stating because the pot having "seemingly
+  random effect" was the previous session's most visible symptom and is a dead end for this.
+- Checked off-Pi with the ADC stubbed: the previous run's voltages are rejected with
+  `slope 25.6410`, and a healthy 1.143 V / 2.000 V pair still passes, yielding
+  `PH_SLOPE = 3.5006` / `PH_INTERCEPT = -0.0012` exactly as before.
+- Fixed a stale "pH 4.00 + 9.18 buffers" line in the run-on-the-Pi reference; the buffers on
+  hand are 4.00 and 7.00. The identical line inside the 2026-10 entry is left as history.
+
+### Open: the compressed pH span itself is still unexplained
+The script now refuses bad constants, which is not the same as the hardware working. Three
+checks, cheapest first, before the next calibration attempt:
+1. **pH board VCC must be 5.0 V, not 3.3 V.** The SEN0161 needs 5 V; starved, its gain stage
+   both compresses the span and drops the output's absolute level, which is exactly the pair
+   of symptoms seen (0.86-0.97 V where 1.14-2.00 V is expected). The ADS1115 deliberately runs
+   from 3.3 V, so a 3.3 V rail is right there next to the board and easy to grab by mistake.
+2. **Continuity (~0 ohm) between the pH board's GND and the ADS1115's GND.** Still unmeasured
+   from last session. Grounding has been the root cause of three separate faults here.
+3. **Multimeter on the board's OUT against the board's own GND, in each buffer.** This is the
+   decisive one: ~0.85 V apart means board and probe are healthy and the fault is in the ADC
+   path, while a span near 0.12 V means the probe or board is at fault and no amount of
+   calibration or ADC work will help.
