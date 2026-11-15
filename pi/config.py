@@ -51,8 +51,10 @@ PH_ADC_CHANNEL = 0          # A0
 # pH is linear in the board's output voltage: pH = PH_SLOPE * volts + PH_INTERCEPT.
 # 3.5 / 0.0 are DFRobot's defaults for an UNCALIBRATED board — readings will be plausible
 # but wrong until these are replaced with what calibrate_ph.py prints.
-PH_SLOPE = 3.5
-PH_INTERCEPT = 0.0
+# PH_SLOPE = 3.5
+# PH_INTERCEPT = 0.0
+PH_SLOPE = 25.1572
+PH_INTERCEPT = -18.6824
 PH_SAMPLES_PER_READ = 5     # median of N ADC reads; raw analog pH output is noisy
 
 # --- EC (Bluelab Guardian via the Edenic cloud API) ---
