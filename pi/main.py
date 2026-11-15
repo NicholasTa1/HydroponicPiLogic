@@ -116,14 +116,17 @@ def main():
     fan_controllers = {basin_id: FanController(basin_id) for basin_id in BASIN_IDS}
     validity = ValidityTracker()
 
-    last_sync = time.monotonic()
+    # None rather than "now", so the first cycle's readings sync immediately instead of
+    # sitting locally for SYNC_INTERVAL_S. A bring-up run then proves the whole pipeline in
+    # one 30s cycle, and a restart pushes out whatever the previous run left unsynced.
+    last_sync = None
 
     while True:
         loop_start = time.monotonic()
 
         read_all(conn, master_sensors, per_basin_sensors, fan_controllers, validity)
 
-        if time.monotonic() - last_sync >= SYNC_INTERVAL_S:
+        if last_sync is None or time.monotonic() - last_sync >= SYNC_INTERVAL_S:
             sync_pending(conn)
             last_sync = time.monotonic()
 

@@ -780,3 +780,18 @@ A collision does not drop one reading: the batch never succeeds, those rows stay
 sync retries the same failing batch forever, so uploading stops until someone intervenes.
 `supabase_schema.sql` records the one-line `alter table` to hand id generation back to Postgres
 if that is preferred. Not changed either way here — sending it was asked for deliberately.
+
+## 2026-11-15 (first-cycle sync)
+- **`main.py` now syncs straight after the first read cycle** instead of five minutes in.
+  `last_sync` starts as `None` rather than `time.monotonic()`, so the interval check passes on
+  the first pass and is then set normally. The 5-minute cadence is unchanged after that.
+- Why: a bring-up run proves the whole pipeline — sensors, validity, SQLite, Supabase — in one
+  30s cycle instead of making someone wait out `SYNC_INTERVAL_S` to find out a credential is
+  wrong. A restart also pushes out whatever the previous run left unsynced right away, rather
+  than holding it for another interval.
+- A failed first sync still sets `last_sync`, so the retry is on the normal 5-minute cadence,
+  exactly as before. No change to how failures are handled.
+- Checked off-Pi with `read_all`/`sync_pending` stubbed over 4 cycles: sync runs on cycle 1 and
+  on none of cycles 2-4.
+- Note for bring-up: `sync_pending()` prints only on failure, so a successful first sync is
+  silent. Confirm it in Supabase, or ask for a log line if that is wanted.
