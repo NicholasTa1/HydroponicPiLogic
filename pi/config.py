@@ -38,8 +38,43 @@ STUCK_READING_COUNT = 20    # identical readings in a row before calling a probe
 STUCK_VALUE_DECIMALS = 4    # spec §4: "identical value to 4 dp"
 
 # --- Fan feedback loop (bang-bang, per basin) ---
+# Lettuce wants 60-70 F air and starts bolting, tipburning and turning bitter above ~75 F, so
+# 72 F is a deliberately conservative "too warm".
+#
+# The OFF threshold was 58 F, which could not work: the fan exhausts to room air, so the
+# chamber can never get far below ambient, and a 58 F target in a ~70 F room means the fan
+# latches on at the first warm moment and never switches off again. 69 F is reachable in a
+# normal room and still leaves a 3 F band, which is plenty to stop a fan chattering at a
+# threshold sampled every 30s. Raise ON before lowering OFF if the fan runs too much; the two
+# must not cross.
 FAN_ON_TEMP_F = 72.0
-FAN_OFF_TEMP_F = 58.0
+FAN_OFF_TEMP_F = 69.0
+
+# BCM pin per basin that switches that basin's fan. Taken: 11, 17, 19 (and 2/3 for I2C, 4 for
+# 1-Wire). A basin with no entry here keeps its fan state in software but drives nothing, which
+# is what happens off a Pi.
+#
+# DANGER: this pin switches the fan, it does not power it. The CFM-A2SG is a 12V fan drawing
+# 0.08-0.47 A typical depending on model (0.56 A max on the 3000 RPM one). A Pi GPIO is 3.3V
+# and a few mA, and the Pi has no 12V rail at all, so the fan needs its own 12V supply and a
+# MOSFET or relay in its negative lead, with that supply's ground tied to the Pi's. See
+# PROGRESS.md: an unshared ground has been the root cause of three faults on this build.
+#
+# Do NOT instead PWM the fan's supply line to vary speed: the datasheet gives a 7V starting
+# voltage, so it will stall rather than slow down. Speed control needs the blue PWM wire,
+# present only on "-22" part numbers, which takes 10-60 kHz at VIH 2.5-6V (the Pi's 3.3V is in
+# range). This code only switches the fan fully on or off.
+FAN_GPIO_PINS: dict[str, int] = {"basin_1": 27}
+
+# False for the common active-LOW relay boards, where the pin must be pulled low to energise.
+# Getting this backwards runs the fan exactly when it should be off, so check it against the
+# board before trusting the loop.
+FAN_RELAY_ACTIVE_HIGH = True
+
+# How long to hold the fan at its last state when no trusted temperature arrives, before
+# failing toward cooling. 10 min = 20 missed 30s cycles: long enough to ride out a glitch,
+# short enough that a dead sensor does not quietly stop the crop being cooled.
+FAN_STALE_READING_S = 600
 
 # --- ADC (Adafruit ADS1115) ---
 # The Pi has no analog inputs, so analog probes are read through this I2C ADC.

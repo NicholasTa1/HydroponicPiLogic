@@ -151,6 +151,7 @@ ls /sys/bus/w1/devices/            # expect a 28-* entry for the DS18B20
 python3 read_adc.py                # live ADC voltages (pH/EC), Ctrl-C to stop
 python3 read_sensors.py            # every sensor, converted values -- the main bring-up tool
 python3 calibrate_ph.py            # needs two buffers, e.g. pH 4.00 + 7.00
+python3 test_fan.py                # cycles the fan on/off, to check relay wiring
 python3 test_ph_sync.py            # one reading end to end into Supabase
 python3 seed_dummy_data.py         # 10 fake cycles, for testing BLE without sensors
 python3 ble_server.py              # BLE peripheral; pair with nRF Connect
@@ -795,3 +796,53 @@ if that is preferred. Not changed either way here — sending it was asked for d
   on none of cycles 2-4.
 - Note for bring-up: `sync_pending()` prints only on failure, so a successful first sync is
   silent. Confirm it in Supabase, or ask for a log line if that is wanted.
+
+## 2026-11-15 (fan control)
+- **The fan loop now actually drives a pin.** `control.FanController` had the hysteresis logic
+  but ended in `TODO: drive the actual relay/GPIO pin`, so nothing switched. It now holds a
+  lazily-built `gpiozero.DigitalOutputDevice` on `FAN_GPIO_PINS[basin_id]` (BCM **27**; 11, 17
+  and 19 are taken, plus 2/3 for I2C and 4 for 1-Wire), built on first use so constructing a
+  controller stays side-effect free off a Pi.
+- `FAN_RELAY_ACTIVE_HIGH` covers active-LOW relay boards, which are the common kind. Set wrong
+  it runs the fan exactly when it should be off, so `test_fan.py` was added to check it: it
+  cycles the fan 5s on, 5s off, and the fan should spin while the terminal says ON.
+
+### The 58 F off-threshold could never have worked
+`FAN_OFF_TEMP_F` was 58 F against an ON of 72 F. The fan exhausts to room air, so the chamber
+cannot get far below ambient; in a ~70 F room, 58 F is unreachable, and the fan would latch on
+at the first warm moment and run forever. **Changed to 69 F**, leaving a 3 F band -- ample to
+stop a fan chattering at a threshold that is only sampled every 30s. ON stays at the 72 F
+originally specified, which is conservative for lettuce: it wants 60-70 F air and starts
+bolting, tipburning and going bitter above ~75 F. Nothing in `PI_CONTROL_SPEC.md` covers fans,
+so 72/58 came from the original brief and not from the spec.
+
+### A dead temperature sensor no longer disables cooling
+`main.py` used to drop a failed reading before the controller saw it, holding the fan wherever
+it was. That is right for a one-off glitch and wrong for a sensor that has died, because the
+hold never ends -- and the SCD41 that provides this reading has already been DOA once. The None
+is now passed through to `FanController.update()`, which holds for `FAN_STALE_READING_S`
+(10 min = 20 missed cycles) and then runs the fan until a trusted reading says otherwise. The
+two failure directions are not equal: a fan stuck off cooks the crop, a fan stuck on costs a
+little power and noise.
+
+### Wiring, from the CFM-A2SG datasheet
+- **12 Vdc** (10.8-13.2 V), 0.08-0.47 A typical by model, 0.56 A max on the 3000 RPM variant.
+  A Pi GPIO is 3.3V at a few mA and the Pi has no 12V rail, so the pin switches a MOSFET or
+  relay in the fan's negative lead -- it does not power the fan. **The 12V supply's ground must
+  be tied to the Pi's**: see the grounding section above, three faults on this build so far.
+- **Do not PWM the supply line to vary speed.** Starting voltage is 7V, so the fan stalls
+  rather than slows. Speed control needs the blue PWM wire, present only on `-22` part numbers,
+  at 10-60 kHz with VIH 2.5-6V (the Pi's 3.3V qualifies). This code only switches fully on/off.
+- Unused for now but available: tach on the yellow wire of `-20`/`-22` models, open collector,
+  so it needs a pullup to 3.3V (Ic <= 5 mA means R >= 660 ohm; 10k is fine). The motor is
+  4-pole, 2 pulses per revolution, RPM = Hz x 30. That would let the Pi detect a failed fan,
+  which the bang-bang loop currently cannot.
+- Auto-restart on a locked rotor is built into the fan. Soft start (~15s ramp) only on the
+  -130-431.
+- On exit gpiozero resets the pin, so the fan stops. Failing *on* would be the safer direction
+  for the crop; that needs a normally-closed relay, which is a hardware choice, not a code one.
+- Checked off-Pi with the pin stubbed: the fan switches on above 72 F, holds through 71/70/69.5
+  on the way down, releases below 69 F, stays off for 9 min of unreadable temperature, runs at
+  10 min, and returns to normal control when a trusted reading comes back. **Not yet run on a
+  Pi, and no fan has been wired** -- the thresholds and the relay polarity are both unverified
+  against real hardware.

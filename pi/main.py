@@ -83,11 +83,11 @@ def read_all(conn, master_sensors, per_basin_sensors, fan_controllers, validity)
         for sensor in sensors:
             values[sensor.name] = _read_trusted(conn, validity, sensor)
 
-        # Spec §4: never act on a reading that failed its checks. Holding the fan at its
-        # current state is safer than driving it from a probe we know is lying.
-        temperature = values.get("temperature")
-        if temperature is not None:
-            fan_controllers[basin_id].update(temperature)
+        # Spec §4: never act on a reading that failed its checks. The None is passed in
+        # rather than filtered out here, so the controller can tell a one-off glitch (hold
+        # the fan where it is) from a sensor that has died (fail toward cooling). All of
+        # that policy lives in FanController.update().
+        fan_controllers[basin_id].update(values.get("temperature"))
 
         db.insert_cycle(conn, basin_id, values, ts=cycle_ts)
 
