@@ -18,8 +18,6 @@ from sensors.ads1115 import ADS1115
 _SAMPLES = 20
 _SAMPLE_INTERVAL_S = 0.5
 _STABLE_SPREAD_V = 0.01   # tighter than the old 0.05 warning: this now gates acceptance
-_NOMINAL_MV_PER_PH = 1000 / 3.5   # the board's default 3.5 pH/V, expressed as mV per pH unit
-_SLOPE_LIMITS = (2.0, 6.0)        # pH/V; generous either side of that nominal 3.5
 
 
 def _sample(adc: ADS1115) -> tuple[float, float]:
@@ -82,27 +80,13 @@ def main():
     # a bug in their code; use the slope we just derived.
     intercept = first_ph - slope * first_volts
 
-    # A plausible slope is the real acceptance test, not merely "the two buffers differ". An
-    # electrode that has lost most of its span still moves a little between buffers, which
-    # passes the check above and then yields a slope several times the nominal 3.5 pH/V. The
-    # constants look like a calibration but turn every later reading into noise, and nothing
-    # downstream can tell — so this is the only place it can be caught.
+    # Reported, not judged: what counts as a healthy span depends on whether the board
+    # amplifies the electrode or just buffers it, which differs between the boards sold under
+    # these part numbers. A bare glass electrode gives 59 mV/pH; an amplified board gives
+    # several times that. Printing the measured figure lets whoever is calibrating compare it
+    # against their own board, rather than against an assumption baked in here.
     delta_ph = abs(first_ph - second_ph)
-    mv_per_ph = span_v / delta_ph * 1000
-    print(f"\nspan {span_v:.4f} V over {delta_ph:.2f} pH = {mv_per_ph:.0f} mV/pH "
-          f"({mv_per_ph / _NOMINAL_MV_PER_PH * 100:.0f}% of the nominal "
-          f"{_NOMINAL_MV_PER_PH:.0f} mV/pH)")
-
-    low, high = _SLOPE_LIMITS
-    if not low <= abs(slope) <= high:
-        print(f"\nREJECTED: slope {slope:.4f} pH/V is outside {low}-{high} pH/V, so the probe")
-        print("is not reporting a usable span. These constants would be worse than useless.")
-        print("The offset potentiometer cannot fix this: it shifts the curve, not its span.")
-        print("Measure the board's OUT pin against the board's own GND with a multimeter, in")
-        print("each buffer. Roughly 0.85 V apart means board and probe are fine and the fault")
-        print("is in the ADC path; a span as small as this one means the probe or board is.")
-        if input("\ntype 'force' to print these constants anyway: ").strip().lower() != "force":
-            return
+    print(f"\nspan {span_v:.4f} V over {delta_ph:.2f} pH = {span_v / delta_ph * 1000:.0f} mV/pH")
 
     print("\nPaste into config.py:\n")
     print(f"PH_SLOPE = {slope:.4f}")

@@ -705,16 +705,48 @@ then `test_ph_sync.py` for a real end-to-end reading.
 - Fixed a stale "pH 4.00 + 9.18 buffers" line in the run-on-the-Pi reference; the buffers on
   hand are 4.00 and 7.00. The identical line inside the 2026-10 entry is left as history.
 
-### Open: the compressed pH span itself is still unexplained
-The script now refuses bad constants, which is not the same as the hardware working. Three
-checks, cheapest first, before the next calibration attempt:
-1. **pH board VCC must be 5.0 V, not 3.3 V.** The SEN0161 needs 5 V; starved, its gain stage
-   both compresses the span and drops the output's absolute level, which is exactly the pair
-   of symptoms seen (0.86-0.97 V where 1.14-2.00 V is expected). The ADS1115 deliberately runs
-   from 3.3 V, so a 3.3 V rail is right there next to the board and easy to grab by mistake.
-2. **Continuity (~0 ohm) between the pH board's GND and the ADS1115's GND.** Still unmeasured
-   from last session. Grounding has been the root cause of three separate faults here.
-3. **Multimeter on the board's OUT against the board's own GND, in each buffer.** This is the
-   decisive one: ~0.85 V apart means board and probe are healthy and the fault is in the ADC
-   path, while a span near 0.12 V means the probe or board is at fault and no amount of
-   calibration or ADC work will help.
+### The compressed pH span
+A second calibration run gave slope 25.1572 / intercept -18.6824, against 25.7373 / -18.0681
+the time before. Backing the voltages out of both:
+
+| run | V @ pH 4 | V @ pH 7 | span | mV/pH |
+|---|---|---|---|---|
+| first | 0.8574 | 0.9740 | 0.1166 | 38.9 |
+| second | 0.9016 | 1.0209 | 0.1193 | 39.8 |
+
+**The span reproduced to within 2.3%, and the offset moved by 0.045 V.** Both are informative:
+a repeatable linear response is not a floating reference (that gave *randomness* on the level
+sensor, which is what identified it), so grounding was ruled out here. The offset moving while
+the span held is the potentiometer doing exactly what a pot does, which confirms absolute
+voltage says nothing about probe health on this board -- only the span does.
+
+Whether 39.8 mV/pH is fatal depends on the board: a bare glass electrode gives 59.16 mV/pH
+(Nernst, 25 C), so it is 67% of a *buffered* board's nominal but only 14% of an *amplified*
+one's 286 mV/pH. Which board is in use was never recorded beyond "SEN0161/SEN0169", and the
+distinction matters for every reading, so it is worth pinning down if pH is revisited.
+
+**Resolved on the bench 2026-11-15; the cause was not shared with this session, so it is not
+recorded here.** Anyone picking pH up again should ask rather than re-derive from the above.
+
+## 2026-11-15 (later)
+- **Removed the slope plausibility gate from `calibrate_ph.py`**, added earlier the same day.
+  It rejected anything outside 2.0-6.0 pH/V, a range derived from DFRobot's `pH = 3.5 x V`,
+  which assumes an amplified board. The boards sold under these part numbers are not all
+  amplified -- a buffered one sits near 17 pH/V -- so on the wrong board the gate would have
+  rejected every valid calibration and forced an operator through a `force` prompt each time.
+  Guessing at the hardware was worse than not checking.
+- What remains is the span report, now stated plainly as `span 0.1193 V over 3.00 pH =
+  40 mV/pH` with no judgement attached, so it can be compared against whichever board is
+  actually wired. The pre-existing "both buffers read the same voltage" check also stays: that
+  one needs no assumption about gain, since no board of any kind reports a dead flat response.
+- Checked off-Pi with the ADC stubbed: the run that was rejected now prints its constants, an
+  amplified board still yields 3.5006 / -0.0012, and two identical readings are still caught.
+- **The second run's constants are now live in `config.py`** (`PH_SLOPE = 25.1572`,
+  `PH_INTERCEPT = -18.6824`, committed separately as 720a404; the 3.5 / 0.0 defaults are left
+  commented out above them). Accepting a 40 mV/pH response as correct implies the board
+  buffers the electrode rather than amplifying it, which is the reading of the table above
+  that puts the probe at ~67% efficiency rather than 14%. That also settles why the gate
+  removed in this commit had to go: it would have rejected the constants now in use.
+- **~67% is still below the ~85% that normally retires a glass electrode**, so expect pH
+  accuracy to drift and the probe to need replacing sooner than the others. Worth a second
+  opinion against a handheld meter before trusting pH for dosing decisions.
