@@ -31,7 +31,7 @@ Subscribe to DATA **before** writing to CONTROL, or the first notifications are 
 All messages are compact JSON, one per notification, each well under 500 bytes.
 
 ```json
-{"t":"hdr","cols":["recorded_at","ph","ec","temperature_c","humidity","light_intensity","co2","water_temp","water_level","system_name","username"],"n":10,"sensors_ok":true}
+{"t":"hdr","cols":["recorded_at","ph","ec","temperature_c","humidity","light_intensity","co2","water_temp","water_level","system_name","username","id"],"n":10,"sensors_ok":true}
 {"t":"row","i":0,"v":["2026-10-09T08:54:20.250000+00:00",6.0,1.12,24.0,62.0,null,820,19.5,true,"HydroPi-3f9a0c12","admin"]}
 {"t":"end"}
 ```
@@ -56,6 +56,7 @@ All messages are compact JSON, one per notification, each well under 500 bytes.
 | `water_level` | boolean | — | `true` = water at the low-level sensor (normal), `false` = level too low. Added 2026-11-07; sensor moved from the overflow height to the low-water mark 2026-11-09 |
 | `system_name` | string | — | Which growing system this Pi is: by default the same as the advertised name (`HydroPi-…`), or `HYDRO_SYSTEM_NAME` if set; never `null`. Added 2026-11-09, appended last |
 | `username` | string | — | The app user the readings belong to (`SUPABASE_USERNAME`, default "admin"); never `null`. Added 2026-11-11, appended last |
+| `id` | integer | — | The Pi's own row counter (1, 2, 3, …), the local SQLite primary key, sent to Supabase as its `id` rather than generated there. Unique within one Pi only. Added 2026-11-15, appended last |
 
 **Any sensor column may be `null`** when that sensor is unimplemented, failed, or missing from
 the cycle. Treat `null` as "no reading", not as zero.

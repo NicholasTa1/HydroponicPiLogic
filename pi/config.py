@@ -254,15 +254,26 @@ SUPABASE_USERNAME = os.environ.get("SUPABASE_USERNAME", "admin")
 
 # Every column a local cycle row becomes remotely. Supabase sync and the BLE server both send
 # exactly these, built by remote_record() below, so the two paths cannot drift apart.
-REMOTE_RECORD_COLUMNS = ("recorded_at", "username", "system_name", *REMOTE_COLUMNS.values())
+REMOTE_RECORD_COLUMNS = ("id", "recorded_at", "username", "system_name", *REMOTE_COLUMNS.values())
 
 
 def remote_record(row) -> dict:
     """One local cycle row as it appears remotely (Supabase and BLE), keyed by remote column
-    names: the time, the username and system name settings, and every mapped sensor value."""
+    names: the row id, the time, the username and system name settings, and every mapped
+    sensor value.
+
+    `id` is this Pi's local SQLite counter (1, 2, 3, ...), sent rather than left to the
+    database to generate. It is therefore only unique within one Pi's hydro.db: see
+    PROGRESS.md for what that costs, because a collision fails the whole insert batch.
+    """
     import datetime  # local: config is otherwise plain settings
 
     recorded_at = datetime.datetime.fromtimestamp(row["ts"], tz=datetime.timezone.utc).isoformat()
-    record = {"recorded_at": recorded_at, "username": SUPABASE_USERNAME, "system_name": SYSTEM_NAME}
+    record = {
+        "id": row["id"],
+        "recorded_at": recorded_at,
+        "username": SUPABASE_USERNAME,
+        "system_name": SYSTEM_NAME,
+    }
     record.update({remote: remote_value(local, row[local]) for local, remote in REMOTE_COLUMNS.items()})
     return record

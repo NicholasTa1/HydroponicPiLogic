@@ -19,7 +19,7 @@ from config import BLE_STALE_AFTER_S, REMOTE_RECORD_COLUMNS, remote_record
 # New columns go on the end so existing positions never move.
 COLUMNS = [
     "recorded_at", "ph", "ec", "temperature_c", "humidity", "light_intensity", "co2", "water_temp",
-    "water_level", "system_name", "username",
+    "water_level", "system_name", "username", "id",
 ]
 
 # BLE sends exactly what Supabase sync sends. A column added to the sync record must be appended

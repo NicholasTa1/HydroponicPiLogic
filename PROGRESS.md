@@ -750,3 +750,33 @@ recorded here.** Anyone picking pH up again should ask rather than re-derive fro
 - **~67% is still below the ~85% that normally retires a glass electrode**, so expect pH
   accuracy to drift and the probe to need replacing sooner than the others. Worth a second
   opinion against a handheld meter before trusting pH for dosing decisions.
+
+## 2026-11-15 (id)
+- **The Pi now sends `id` on every row**, taken from the local SQLite `readings` counter
+  (`INTEGER PRIMARY KEY AUTOINCREMENT`, so 1, 2, 3, ...) rather than letting Postgres generate
+  it. Added to `config.remote_record()` and `REMOTE_RECORD_COLUMNS`, so it goes to Supabase and
+  over BLE from one builder; appended last in `ble_protocol.COLUMNS`, keeping every existing
+  position unchanged. `docs/ble-protocol.md` updated (the app repo's copy is still behind).
+- Sent as a plain int, not via `remote_value()`: it is a row identifier, not a sensor reading,
+  so it needs none of the boolean/integer conversions. All-empty cycles are still skipped by
+  sync, because the skip test only looks at `REMOTE_COLUMNS` values.
+- Checked off-Pi against a real SQLite file with `supabase` stubbed: ids 1-3 arrive in the
+  insert payload as integers, a sync record and a BLE row for the same cycle stay identical,
+  and the largest BLE message is 176 bytes. Not yet run against Supabase.
+
+### Caveat: this id is only unique within one Pi
+`id` is the table's primary key, and a local counter is not globally unique. Three ways it
+collides, each of which fails the **entire** insert batch, not the one row — the same
+batch-poisoning that the `co2` bigint and `water_temp` array problems caused:
+1. **A second Pi.** `system_name` was added precisely because there will be more than one
+   system, and every Pi's counter starts at 1.
+2. **A wiped or recreated `hydro.db`.** Ids restart at 1 and collide with everything already
+   uploaded.
+3. **Rows the database generated itself.** The seeded rows currently occupy ids 92-131, so a
+   Pi starting from 1 collides on reaching 92. An identity sequence also does not advance when
+   ids are supplied explicitly, so anything still inserting without an id will eventually
+   reissue ids the Pi has already used.
+A collision does not drop one reading: the batch never succeeds, those rows stay unsynced, and
+sync retries the same failing batch forever, so uploading stops until someone intervenes.
+`supabase_schema.sql` records the one-line `alter table` to hand id generation back to Postgres
+if that is preferred. Not changed either way here — sending it was asked for deliberately.
