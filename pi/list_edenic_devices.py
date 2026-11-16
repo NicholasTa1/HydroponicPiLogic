@@ -15,7 +15,9 @@ def main():
         return
 
     for device in devices:
-        name = device.get("name") or device.get("label") or "(unnamed)"
+        # `label` is the name shown in the Edenic app; `name` is an internal
+        # organisation__serial string, which is no use for picking a device out.
+        name = device.get("label") or device.get("name") or "(unnamed)"
         print(f"{name}\n  id: {device.get('id')}\n")
 
     print("Put the id of your Guardian into .env as EDENIC_DEVICE_ID.")

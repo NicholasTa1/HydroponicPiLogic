@@ -866,3 +866,40 @@ little power and noise.
   it does not, the answer is not a different threshold but less heat input or a cooler room.
 - Checked off-Pi: fan trips on above 74 F, holds through 73/71/69.5 on the way down, releases
   below 69 F. Still not run on a Pi, and still no fan wired.
+
+## 2026-11-16
+- **The Edenic EC path is live and talking to the real API.** Credentials went into `pi/.env`
+  (gitignored, never committed) and `list_edenic_devices.py` returned four Guardian Wi-Fi units
+  on the organisation: `PSU-IPPL-VF-01`, `-VF-02`, `-GH01`, `-GH02`. This system is
+  **PSU-IPPL-VF-01**; its device id is in `.env` as `EDENIC_DEVICE_ID`. The organisation is
+  shared lab equipment, so picking the wrong one would quietly log another greenhouse's EC into
+  this dataset -- confirm the label before changing it.
+- `list_edenic_devices.py` was showing the wrong field: the API's `name` is an internal
+  `organisation__serial` string, while `label` is the name shown in the Edenic app. Now prints
+  `label` first.
+- Telemetry confirmed working end to end: `ECSensor.read()` returned 0.42 mS/cm, the 60s cache
+  served a second read with no network call, and the value passed the §4 range check. The
+  Guardian also publishes `ph` and `temperature` on the same endpoint, which nothing reads.
+
+### The API reports stale data as if it were current
+The first real reading was **6.7 days old** — PSU-IPPL-VF-01 has been unplugged since
+2026-11-09 18:40. The endpoint answered 200 with the last sample it ever received and no
+indication the device had stopped, so the Pi would have logged a week-old number as a live
+measurement every 30s. **This is the failure mode the 2026-11-09 entry claimed was handled**,
+and it was not: that reasoning only covered a fetch that *fails*, and this one succeeds.
+- **Fix:** `EdenicTelemetry.value()` now checks the sample's own `ts` and raises past
+  `EDENIC_MAX_READING_AGE_S` (30 min), naming the device and the age. `_read_trusted` records
+  it as a fault and leaves EC NULL, the same as any other sensor failure. Verified against the
+  live API: `Edenic 'electrical_conductivity' is 161.0 h old (limit 30 min) — device ... has
+  stopped reporting`, reading not trusted, fault row written.
+- **The §4 stuck check is now off for `ec`.** It would have caught this eventually — 20
+  identical readings is 10 minutes — but only after ten minutes of trusting week-old data, and
+  it would have blamed a stuck probe rather than an offline device. It is also wrong in the
+  other direction: the cloud value updates more slowly than the 30s sample loop, so identical
+  consecutive readings are normal here. The timestamp check replaces it and is both faster and
+  more specific.
+- 30 min was chosen as well clear of the Guardian's reporting interval, which is not documented
+  anywhere. If a healthy unit starts faulting as stale, raise `EDENIC_MAX_READING_AGE_S` rather
+  than removing the check.
+- Open: EC stays NULL until the Guardian is plugged back in. Worth one read then, to confirm a
+  live value arrives and to see how often the timestamp actually advances.

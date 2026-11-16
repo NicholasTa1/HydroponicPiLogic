@@ -24,6 +24,7 @@ import urllib.request
 from config import (
     EDENIC_API_BASE_URL,
     EDENIC_API_KEY,
+    EDENIC_MAX_READING_AGE_S,
     EDENIC_MIN_POLL_S,
     EDENIC_ORGANIZATION_ID,
     EDENIC_REQUEST_TIMEOUT_S,
@@ -77,8 +78,25 @@ class EdenicTelemetry:
         """Latest value for one telemetry key, e.g. 'electrical_conductivity'.
 
         Values arrive as strings in a newest-first list, so they are converted here.
+
+        Raises if that value has gone stale. This matters more than it looks: the API answers
+        200 with the last sample it ever received, with no indication that the device has
+        stopped reporting, so an unchecked read turns a Guardian that died last week into a
+        confident current measurement. Raising instead records a fault and leaves EC NULL,
+        which is the same way every other sensor fails.
         """
         entries = self._telemetry().get(key)
         if not entries:
             raise ValueError(f"Edenic returned no {key!r} for device {self.device_id}")
-        return float(entries[0]["value"])
+
+        entry = entries[0]
+        timestamp_ms = entry.get("ts")
+        if timestamp_ms is not None:
+            age_s = time.time() - timestamp_ms / 1000
+            if age_s > EDENIC_MAX_READING_AGE_S:
+                raise ValueError(
+                    f"Edenic {key!r} is {age_s / 3600:.1f} h old "
+                    f"(limit {EDENIC_MAX_READING_AGE_S / 60:.0f} min) — "
+                    f"device {self.device_id} has stopped reporting"
+                )
+        return float(entry["value"])

@@ -25,7 +25,10 @@ BASIN_IDS = ["basin_1"]     # add one entry per physical basin as they come onli
 # units in 30s, which is 0.05/s.
 VALIDITY_RULES = {
     "ph":          {"min": 3.0, "max": 9.0, "max_change_per_s": 0.05},
-    "ec":          {"min": 0.0, "max": 5.0, "max_change_per_s": 0.1},
+    # No stuck check: EC comes from a cloud API that updates more slowly than we sample, so
+    # repeated identical values are normal. A feed that has died is caught precisely by
+    # EDENIC_MAX_READING_AGE_S instead, which also names the real fault.
+    "ec":          {"min": 0.0, "max": 5.0, "max_change_per_s": 0.1, "stuck_check": False},
     "temperature": {"min": 0.0, "max": 40.0},
     "water_temp":  {"min": 0.0, "max": 40.0},
     "humidity":    {"min": 0.0, "max": 100.0},
@@ -106,6 +109,11 @@ EDENIC_DEVICE_ID = os.environ.get("EDENIC_DEVICE_ID", "")
 EDENIC_MIN_POLL_S = 60
 EDENIC_REQUEST_TIMEOUT_S = 10
 EDENIC_EC_KEY = "electrical_conductivity"   # already mS/cm, matching our unit
+# How old the newest telemetry sample may be before it is refused. The API answers 200 with
+# the last value it ever saw, however long ago that was, so without this a Guardian that went
+# offline days ago still reads as a current measurement. 30 min is well clear of the Guardian's
+# own reporting interval; raise it if a healthy unit starts faulting as stale.
+EDENIC_MAX_READING_AGE_S = 1800
 
 # --- EC probe (SenseCAP S-EC-01, analog) — superseded by the Guardian above, kept in case
 # the analog path is revived. Nothing reads these while ECSensor uses Edenic. ---
