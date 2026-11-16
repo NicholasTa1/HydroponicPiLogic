@@ -26,7 +26,7 @@ below, so the plan stands alone until then.
 ### Message format
 
 ```json
-{"t":"hdr","cols":["recorded_at","ph","ec","temperature_c","humidity","light_intensity","co2","water_temp"],"n":10,"sensors_ok":true}
+{"t":"hdr","cols":["recorded_at","ph","ec","temperature_c","humidity","light_intensity","co2","water_temp","water_level","system_name","username","id"],"n":10,"sensors_ok":true}
 {"t":"row","i":0,"v":["2026-10-07T18:50:48+00:00",5.93,1.17,22.02,60.61,null,821.68,19.48]}
 {"t":"end"}
 {"t":"err","msg":"db busy"}
@@ -118,7 +118,8 @@ Handle `n: 0` — a valid, empty response when the Pi has no readings yet.
 
 ## Phase 3 — The table
 
-Ten rows by seven columns does not fit a phone screen. Recommended shape:
+Ten rows by 12 columns does not fit a phone screen, and `system_name`, `username`
+and `id` are row metadata rather than readings. Recommended shape:
 
 ```
 ┌──────────┬──────┬──────┬────────┬──────┬───────┐

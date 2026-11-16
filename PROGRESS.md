@@ -72,23 +72,26 @@ What has actually been verified against real hardware, as distinct from written 
 unit-tested. Keep this current — "the code exists" and "the sensor works" are different
 claims, and the dated entries below cannot be read at a glance.
 
-| Sensor | Part | Status as of 2026-10-16 |
+| Sensor | Part | Status as of 2026-11-16 |
 |---|---|---|
 | ADC | ADS1115 | **Working** — was never damaged; the fault was the analog ground reference |
-| pH | DFRobot SEN0161/9 | **Blocked** — read correctly once, now blocked on the ADC |
+| pH | DFRobot SEN0161/9 | **Reading, accuracy uncertain** — calibrated 2026-11-15, constants live in config.py. Span is ~40 mV/pH; see the 2026-11-15 entries |
 | Light | VEML7700 | **Working** — initial failure was wiring |
-| EC | Bluelab Guardian (Edenic API) | **Code ready, needs credentials** — replaced the SenseCAP |
+| EC | Bluelab Guardian (Edenic API) | **API verified 2026-11-16**, returned a real 0.42 mS/cm. Blocked on the Guardian itself, unplugged since 2026-11-09 |
 | Water level | DFRobot SEN0204 | **Working** — 12k/22k divider, and a shared ground |
 | Water temp | DS18B20 | **Working** — needed 1-Wire enabling via raspi-config + reboot |
 | CO2 / air temp / humidity | SCD41 | **Blocked** — first unit dead on arrival, awaiting replacement |
 | BLE transfer | — | **Working** — verified end to end with nRF Connect |
+| Fan | Same Sky CFM-A2SG | **Code ready, nothing wired** — needs 12V, a MOSFET or relay, and a shared ground |
+| Valve | NITRA via relay (`camera.py`) | **Unverified here** — separate script, and it disagrees with config.py about the level sensor's pin |
 
-Note the distinction between **not working** and **not yet tested**. EC, water level and
-water temp have never produced a reading at all — all three are blocked on physical wiring,
-not on software faults. Nobody should go looking for bugs in their drivers until each has
+Note the distinction between **not working** and **not yet tested**. The fan has never been
+driven and the Guardian has never produced a live reading, but neither is a software fault:
+both are waiting on hardware. Nobody should go looking for bugs in their code until each has
 been connected and produced at least one value.
 
-pH and EC both depend on the ADS1115, so while that is damaged neither can be tested.
+The SCD41 blocks more than its own three columns: `temperature` is what drives the fan loop,
+so until it is replaced the fan has no input and will sit in its 10-minute failsafe.
 
 ## 2026-11-09
 - **EC moved from the analog SenseCAP probe to a Bluelab Guardian read over the Edenic cloud
@@ -151,6 +154,7 @@ ls /sys/bus/w1/devices/            # expect a 28-* entry for the DS18B20
 python3 read_adc.py                # live ADC voltages (pH/EC), Ctrl-C to stop
 python3 read_sensors.py            # every sensor, converted values -- the main bring-up tool
 python3 calibrate_ph.py            # needs two buffers, e.g. pH 4.00 + 7.00
+python3 list_edenic_devices.py     # Guardian device ids, once .env has key + org id
 python3 test_fan.py                # cycles the fan on/off, to check relay wiring
 python3 test_ph_sync.py            # one reading end to end into Supabase
 python3 seed_dummy_data.py         # 10 fake cycles, for testing BLE without sensors
