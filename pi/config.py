@@ -111,9 +111,13 @@ EDENIC_REQUEST_TIMEOUT_S = 10
 EDENIC_EC_KEY = "electrical_conductivity"   # already mS/cm, matching our unit
 # How old the newest telemetry sample may be before it is refused. The API answers 200 with
 # the last value it ever saw, however long ago that was, so without this a Guardian that went
-# offline days ago still reads as a current measurement. 30 min is well clear of the Guardian's
-# own reporting interval; raise it if a healthy unit starts faulting as stale.
-EDENIC_MAX_READING_AGE_S = 1800
+# offline days ago still reads as a current measurement.
+#
+# Measured 2026-11-18: this Guardian posts every 60s, on the round minute, with one 120s gap
+# over six minutes of sampling. 10 min therefore tolerates roughly nine missed reports — ample
+# for a Wi-Fi blip — while spotting a dead device far sooner than the 30 min first guessed at.
+# Tighten toward 300 if faster detection matters more than riding out a flaky link.
+EDENIC_MAX_READING_AGE_S = 600
 
 # --- EC probe (SenseCAP S-EC-01, analog) — superseded by the Guardian above, kept in case
 # the analog path is revived. Nothing reads these while ECSensor uses Edenic. ---

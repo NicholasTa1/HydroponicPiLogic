@@ -77,7 +77,7 @@ claims, and the dated entries below cannot be read at a glance.
 | ADC | ADS1115 | **Working** — was never damaged; the fault was the analog ground reference |
 | pH | DFRobot SEN0161/9 | **Reading, accuracy uncertain** — calibrated 2026-11-15, constants live in config.py. Span is ~40 mV/pH; see the 2026-11-15 entries |
 | Light | VEML7700 | **Working** — initial failure was wiring |
-| EC | Bluelab Guardian (Edenic API) | **API verified 2026-11-16**, returned a real 0.42 mS/cm. Blocked on the Guardian itself, unplugged since 2026-11-09 |
+| EC | Bluelab Guardian (Edenic API) | **Working** — live reading confirmed 2026-11-18 with the Guardian powered on |
 | Water level | DFRobot SEN0204 | **Working** — 12k/22k divider, and a shared ground |
 | Water temp | DS18B20 | **Working** — needed 1-Wire enabling via raspi-config + reboot |
 | CO2 / air temp / humidity | SCD41 | **Blocked** — first unit dead on arrival, awaiting replacement |
@@ -907,3 +907,32 @@ and it was not: that reasoning only covered a fetch that *fails*, and this one s
   than removing the check.
 - Open: EC stays NULL until the Guardian is plugged back in. Worth one read then, to confirm a
   live value arrives and to see how often the timestamp actually advances.
+
+## 2026-11-18
+- **EC is working end to end.** With PSU-IPPL-VF-01 powered on, `ECSensor.read()` returned
+  0.44 mS/cm from a sample 30s old, passing the §4 range check. This is the first live EC
+  reading the system has ever taken — the analog SenseCAP it replaced was never testable.
+- **Measured the Guardian's reporting interval**, which nothing documents: it posts **every
+  60s, on the round minute**, with one 120s gap across six minutes of polling. Two
+  consequences:
+  - `EDENIC_MAX_READING_AGE_S` **cut from 1800 to 600**. 30 min was a guess made with no idea
+    of the cadence; it is 30x the reporting interval, so a dead Guardian would have gone
+    unnoticed for half an hour. 10 min still tolerates ~9 missed reports, which covers the
+    120s gap seen and a Wi-Fi blip besides.
+  - `EDENIC_MIN_POLL_S = 60` turns out to match the publish rate exactly, so the cache fetches
+    each new sample about once. Nothing to change.
+- **The `stuck_check: False` for `ec` is vindicated empirically.** EC read 0.44 unchanged for
+  the whole six minutes while the timestamps advanced every minute — genuinely fresh data that
+  happens to be stable. At the 30s sample rate that is 12+ identical readings already, and the
+  check fires at 20, so a stable reservoir would have been reported as a dead probe within ten
+  minutes.
+- **The Guardian's pH probe is fine.** It read 13.69 while unplugged, which looked like a dead
+  probe; powered on it reads 6.8. That value was an artifact of the offline state, not a fault.
+- **Both Guardian values sit outside the spec §5 act bands**: EC 0.44 against a Week 1-2 target
+  of 0.8 (act below 0.6), and pH 6.8 against a target of 5.8 (act above 6.2). Consistent with
+  plain or freshly topped-up water rather than made-up nutrient solution. Worth confirming
+  before reading anything into the numbers — if dosing existed, both would be calling for it.
+- **Open opportunity:** the Guardian reports pH independently of the DFRobot probe on the ADC,
+  and that probe's accuracy is still unresolved (40 mV/pH, never settled as 67% or 14% of
+  nominal). Reading both in the same reservoir at the same moment would settle it. Needs to run
+  on the Pi, where the ADC is; not written yet.
