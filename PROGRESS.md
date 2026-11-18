@@ -155,6 +155,7 @@ python3 read_adc.py                # live ADC voltages (pH/EC), Ctrl-C to stop
 python3 read_sensors.py            # every sensor, converted values -- the main bring-up tool
 python3 calibrate_ph.py            # needs two buffers, e.g. pH 4.00 + 7.00
 python3 list_edenic_devices.py     # Guardian device ids, once .env has key + org id
+python3 compare_ph.py --watch      # testing only: DFRobot pH vs the Guardian's, logged
 python3 test_fan.py                # cycles the fan on/off, to check relay wiring
 python3 test_ph_sync.py            # one reading end to end into Supabase
 python3 seed_dummy_data.py         # 10 fake cycles, for testing BLE without sensors
@@ -936,3 +937,29 @@ and it was not: that reasoning only covered a fetch that *fails*, and this one s
   and that probe's accuracy is still unresolved (40 mV/pH, never settled as 67% or 14% of
   nominal). Reading both in the same reservoir at the same moment would settle it. Needs to run
   on the Pi, where the ADC is; not written yet.
+
+## 2026-11-18 (pH cross-check)
+- **Added `pi/compare_ph.py`, testing only.** Nothing in `main.py`, `sync.py` or the BLE path
+  imports it (checked by grep), and it writes to its own `ph_compare.csv` rather than
+  `hydro.db`, so it cannot reach the recorded dataset.
+- Why: the Guardian measures pH in the same reservoir, independently of the DFRobot probe on
+  the ADC. That makes it the reference the buffer solutions could not be — the buffer
+  calibration gave ~40 mV/pH and we never settled whether that is ~67% of a buffered board's
+  nominal (tired but usable) or ~14% of an amplified board's (dead).
+- Three modes: a single comparison, `--watch` to log a pair every 60s (the Guardian's publish
+  rate), and `--fit` to least-squares fit `PH_SLOPE`/`PH_INTERCEPT` from the logged pairs with
+  the Guardian as truth.
+- **`--fit` needs pairs at two or more genuinely different pH values.** A slope cannot be
+  fitted from readings all taken at one pH however many there are, so it refuses below a 1.0 pH
+  spread rather than returning a number made of noise. Getting that spread means letting the
+  reservoir drift or dosing it between runs. Done that way it calibrates against the Guardian
+  and sidesteps the buffers entirely.
+- A single comparison cannot separate a wrong slope from a wrong offset, so it reports only the
+  intercept that would reconcile that one reading, and says as much.
+- Checked off-Pi with synthetic pairs: a 59 mV/pH electrode fits to `PH_SLOPE = 16.9492`, a
+  286 mV/pH one to `3.4965`, and a 40 mV/pH one to `25.0000` -- that last is essentially the
+  25.1572 now in config.py, so if the fit lands near 25 the buffer calibration was right after
+  all and the probe genuinely responds at 40 mV/pH.
+- Fixed a bug in that output before committing: the mV/pH figure was the voltage span across
+  the whole pH range rather than per pH unit, so it read exactly 2x high on a 2 pH spread.
+- Not yet run on the Pi -- the ADC half needs real hardware.
